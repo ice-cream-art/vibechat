@@ -3,6 +3,7 @@
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 
 type Phase = "input" | "result" | "matching" | "chat";
+type AtmosphereMode = "auto" | "snow" | "stars" | "rain" | "bubbles" | "off";
 
 type EmotionResult = {
   primary_emotion: string;
@@ -92,6 +93,15 @@ const guideTips = [
   "如果只说一句真话，会是什么？",
 ];
 
+const atmosphereOptions: { value: AtmosphereMode; label: string }[] = [
+  { value: "auto", label: "自动" },
+  { value: "snow", label: "雪" },
+  { value: "stars", label: "星" },
+  { value: "rain", label: "雨" },
+  { value: "bubbles", label: "泡" },
+  { value: "off", label: "关" },
+];
+
 const emotionMeta: Record<string, { glyph: string; color: string; caption: string }> = {
   开心: { glyph: "✦", color: "#ffd166", caption: "明亮而舒展" },
   兴奋: { glyph: "↗", color: "#ff8a5b", caption: "高能量流动" },
@@ -142,6 +152,44 @@ function sameConversation(current: Conversation | null, next: Conversation) {
   );
 }
 
+function atmosphereForMood(mood: string): Exclude<AtmosphereMode, "auto" | "off"> {
+  if (["难过", "疲惫"].includes(mood)) return "snow";
+  if (["焦虑", "愤怒"].includes(mood)) return "rain";
+  if (["开心", "兴奋", "孤独"].includes(mood)) return "stars";
+  return "bubbles";
+}
+
+function AtmosphereLayer({
+  mode,
+  mood,
+}: {
+  mode: AtmosphereMode;
+  mood: string;
+}) {
+  const resolvedMode = mode === "auto" ? atmosphereForMood(mood) : mode;
+  if (resolvedMode === "off") return null;
+  return (
+    <div className={`atmosphere atmosphere-${resolvedMode}`} aria-hidden="true">
+      {Array.from({ length: 26 }, (_, index) => (
+        <span
+          className="atmosphereParticle"
+          key={index}
+          style={{
+            "--i": index,
+            "--x": `${(index * 37) % 100}%`,
+            "--delay": `${(index % 9) * -0.7}s`,
+            "--duration": `${8 + (index % 7) * 1.2}s`,
+            "--size": `${5 + (index % 5) * 2}px`,
+            "--drift": `${((index % 9) - 4) * 18}px`,
+            "--wide-drift": `${((index % 9) - 4) * 24}px`,
+            "--fall-drift": `${((index % 5) - 2) * 24}px`,
+          } as React.CSSProperties}
+        />
+      ))}
+    </div>
+  );
+}
+
 function GuideAvatar({
   emotion,
   size = "md",
@@ -172,6 +220,8 @@ export default function Home() {
   const [match, setMatch] = useState<MatchStatus | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [atmosphereMode, setAtmosphereMode] = useState<AtmosphereMode>("auto");
+  const currentMood = emotion?.primary_emotion || "平静";
 
   const analyze = async (event: FormEvent) => {
     event.preventDefault();
@@ -281,6 +331,7 @@ export default function Home() {
 
   return (
     <main className="shell">
+      <AtmosphereLayer mode={atmosphereMode} mood={currentMood} />
       <div className="ambient ambientOne" />
       <div className="ambient ambientTwo" />
       <header className="siteHeader">
@@ -299,6 +350,20 @@ export default function Home() {
           <b>⌕</b>
         </div>
         <div className="privacyPill"><span className="statusDot" />匿名 · 安全 · 此刻</div>
+        <div className="atmospherePicker" aria-label="氛围模式">
+          {atmosphereOptions.map((option) => (
+            <button
+              aria-pressed={atmosphereMode === option.value}
+              className={atmosphereMode === option.value ? "active" : ""}
+              key={option.value}
+              onClick={() => setAtmosphereMode(option.value)}
+              title={`${option.label}氛围`}
+              type="button"
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
         <button className="registerButton" type="button">注册</button>
         <button className="loginButton" type="button">登录</button>
       </header>

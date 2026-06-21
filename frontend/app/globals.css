@@ -148,7 +148,7 @@ button { color: inherit; }
   margin: 12px auto 0;
   min-height: 76px;
   display: grid;
-  grid-template-columns: auto auto minmax(140px, 1fr) auto auto auto auto;
+  grid-template-columns: auto auto minmax(140px, 1fr) auto auto auto auto auto;
   gap: 18px;
   align-items: center;
   padding: 0 26px;
@@ -232,6 +232,38 @@ button { color: inherit; }
 }
 .atmospherePicker button:hover { color: var(--accent-strong); }
 .atmospherePicker button.active { color: white; background: linear-gradient(135deg, var(--accent), #5ccde8); box-shadow: 0 8px 18px rgba(49,199,189,.2); }
+.soundToggle {
+  width: 44px;
+  height: 38px;
+  border: 1px solid #e3eef1;
+  border-radius: 999px;
+  background: #f8fbfc;
+  color: #82909b;
+  cursor: pointer;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  justify-items: center;
+  gap: 2px;
+  padding: 0 8px;
+  transition: .18s;
+}
+.soundToggle span { font-size: 12px; font-weight: 800; }
+.soundToggle i {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #b7c4cb;
+  box-shadow: 0 0 0 rgba(49,199,189,0);
+}
+.soundToggle:hover { color: var(--accent-strong); border-color: #cce7e8; background: #f0fbfa; }
+.soundToggle.active {
+  color: white;
+  border-color: transparent;
+  background: linear-gradient(135deg, var(--accent), #5ccde8);
+  box-shadow: 0 8px 18px rgba(49,199,189,.2);
+}
+.soundToggle.active i { background: #fff; box-shadow: 0 0 10px rgba(255,255,255,.9); }
 .registerButton {
   border: 0;
   border-radius: 11px;
@@ -585,7 +617,7 @@ textarea::placeholder { color: #aab5bd; }
 .guideBlock button { width: 100%; border: 1px solid #e2eef0; background: #fbfdfe; color: #5a6975; padding: 10px 11px; border-radius: 10px; cursor: pointer; text-align: left; margin-top: 9px; font-size: 12px; }
 
 @media (max-width: 1120px) {
-  .siteHeader { grid-template-columns: auto 1fr auto; }
+  .siteHeader { grid-template-columns: auto 1fr auto auto; }
   .siteNav, .searchBox, .loginButton, .atmospherePicker { display: none; }
   .heroGrid, .resultLayout { grid-template-columns: 1fr; }
   .inputCard { align-self: stretch; }

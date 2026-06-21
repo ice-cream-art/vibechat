@@ -4,6 +4,7 @@ import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 
 type Phase = "input" | "result" | "matching" | "chat";
 type AtmosphereMode = "auto" | "snow" | "stars" | "rain" | "bubbles" | "off";
+type SoundCue = "send" | "receive" | "match";
 
 type EmotionResult = {
   primary_emotion: string;
@@ -152,11 +153,182 @@ function sameConversation(current: Conversation | null, next: Conversation) {
   );
 }
 
+function hasNewIncomingMessage(current: Message[], next: Message[], selfAlias: string) {
+  return next.some((message) => (
+    message.sender_alias !== selfAlias &&
+    !current.some((item) => item.id === message.id)
+  ));
+}
+
 function atmosphereForMood(mood: string): Exclude<AtmosphereMode, "auto" | "off"> {
   if (["难过", "疲惫"].includes(mood)) return "snow";
   if (["焦虑", "愤怒"].includes(mood)) return "rain";
   if (["开心", "兴奋", "孤独"].includes(mood)) return "stars";
   return "bubbles";
+}
+
+function soundFamilyForMood(mood: string): Exclude<AtmosphereMode, "auto" | "off"> {
+  return atmosphereForMood(mood);
+}
+
+function createAudioContext() {
+  const AudioContextClass = window.AudioContext || (window as Window & typeof globalThis & {
+    webkitAudioContext?: typeof AudioContext;
+  }).webkitAudioContext;
+  return AudioContextClass ? new AudioContextClass() : null;
+}
+
+class MoodAudioEngine {
+  private context: AudioContext | null = null;
+  private master?: GainNode;
+  private ambientGain?: GainNode;
+  private fxGain?: GainNode;
+  private ambientSources: AudioScheduledSourceNode[] = [];
+  private currentMood = "";
+
+  private ensureContext() {
+    if (this.context || typeof window === "undefined") return this.context;
+    this.context = createAudioContext();
+    if (!this.context) return null;
+    this.master = this.context.createGain();
+    this.ambientGain = this.context.createGain();
+    this.fxGain = this.context.createGain();
+    this.master.gain.value = 0.75;
+    this.ambientGain.gain.value = 0;
+    this.fxGain.gain.value = 0.18;
+    this.ambientGain.connect(this.master);
+    this.fxGain.connect(this.master);
+    this.master.connect(this.context.destination);
+    return this.context;
+  }
+
+  async resume() {
+    const context = this.ensureContext();
+    if (context?.state === "suspended") await context.resume();
+  }
+
+  startMood(mood: string) {
+    const context = this.ensureContext();
+    if (!context || !this.ambientGain || this.currentMood === mood) return;
+    this.stopAmbient();
+    this.currentMood = mood;
+    const profiles = {
+      snow: { volume: 0.055, tones: [174, 261.63], noise: 0.014, filter: 760 },
+      rain: { volume: 0.06, tones: [146.83, 220], noise: 0.022, filter: 1400 },
+      stars: { volume: 0.05, tones: [329.63, 493.88, 659.25], noise: 0.006, filter: 2200 },
+      bubbles: { volume: 0.052, tones: [220, 330, 440], noise: 0.01, filter: 1200 },
+    } satisfies Record<Exclude<AtmosphereMode, "auto" | "off">, {
+      volume: number;
+      tones: number[];
+      noise: number;
+      filter: number;
+    }>;
+    const profile = profiles[soundFamilyForMood(mood)];
+    this.ambientGain.gain.cancelScheduledValues(context.currentTime);
+    this.ambientGain.gain.setTargetAtTime(profile.volume, context.currentTime, 0.8);
+    profile.tones.forEach((frequency, index) => this.addAmbientTone(frequency, index));
+    this.addAmbientNoise(profile.noise, profile.filter);
+  }
+
+  stopAmbient() {
+    const context = this.context;
+    if (context && this.ambientGain) {
+      this.ambientGain.gain.cancelScheduledValues(context.currentTime);
+      this.ambientGain.gain.setTargetAtTime(0, context.currentTime, 0.3);
+    }
+    this.ambientSources.forEach((source) => {
+      try {
+        source.stop();
+      } catch {
+        // Source may already be stopped by the browser.
+      }
+      source.disconnect();
+    });
+    this.ambientSources = [];
+    this.currentMood = "";
+  }
+
+  dispose() {
+    this.stopAmbient();
+    void this.context?.close();
+    this.context = null;
+  }
+
+  play(cue: SoundCue, mood: string) {
+    const context = this.ensureContext();
+    if (!context || !this.fxGain) return;
+    const family = soundFamilyForMood(mood);
+    if (cue === "send") {
+      this.playTone(family === "rain" ? 392 : 523.25, 0.09, 0.13, "sine");
+      window.setTimeout(() => this.playTone(family === "stars" ? 880 : 659.25, 0.12, 0.1, "triangle"), 70);
+      return;
+    }
+    if (cue === "receive") {
+      const base = family === "snow" ? 349.23 : family === "rain" ? 293.66 : family === "stars" ? 739.99 : 440;
+      this.playTone(base, 0.16, 0.11, family === "rain" ? "sine" : "triangle");
+      window.setTimeout(() => this.playTone(base * 1.5, 0.18, 0.07, "sine"), 110);
+      return;
+    }
+    [392, 493.88, 659.25].forEach((frequency, index) => {
+      window.setTimeout(() => this.playTone(frequency, 0.18, 0.1, "triangle"), index * 95);
+    });
+  }
+
+  private addAmbientTone(frequency: number, index: number) {
+    const context = this.context;
+    if (!context || !this.ambientGain) return;
+    const oscillator = context.createOscillator();
+    const gain = context.createGain();
+    oscillator.type = index % 2 === 0 ? "sine" : "triangle";
+    oscillator.frequency.value = frequency;
+    oscillator.detune.value = (index - 1) * 4;
+    gain.gain.value = 0.012 / (index + 1);
+    oscillator.connect(gain);
+    gain.connect(this.ambientGain);
+    oscillator.start();
+    this.ambientSources.push(oscillator);
+  }
+
+  private addAmbientNoise(volume: number, filterFrequency: number) {
+    const context = this.context;
+    if (!context || !this.ambientGain) return;
+    const buffer = context.createBuffer(1, context.sampleRate * 2, context.sampleRate);
+    const data = buffer.getChannelData(0);
+    let last = 0;
+    for (let i = 0; i < data.length; i += 1) {
+      last = (last + (Math.random() * 2 - 1) * 0.08) * 0.96;
+      data[i] = last;
+    }
+    const source = context.createBufferSource();
+    const filter = context.createBiquadFilter();
+    const gain = context.createGain();
+    source.buffer = buffer;
+    source.loop = true;
+    filter.type = "lowpass";
+    filter.frequency.value = filterFrequency;
+    gain.gain.value = volume;
+    source.connect(filter);
+    filter.connect(gain);
+    gain.connect(this.ambientGain);
+    source.start();
+    this.ambientSources.push(source);
+  }
+
+  private playTone(frequency: number, duration: number, volume: number, type: OscillatorType) {
+    const context = this.context;
+    if (!context || !this.fxGain) return;
+    const oscillator = context.createOscillator();
+    const gain = context.createGain();
+    oscillator.type = type;
+    oscillator.frequency.value = frequency;
+    gain.gain.setValueAtTime(0.0001, context.currentTime);
+    gain.gain.exponentialRampToValueAtTime(volume, context.currentTime + 0.015);
+    gain.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + duration);
+    oscillator.connect(gain);
+    gain.connect(this.fxGain);
+    oscillator.start();
+    oscillator.stop(context.currentTime + duration + 0.03);
+  }
 }
 
 function AtmosphereLayer({
@@ -223,7 +395,61 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [atmosphereMode, setAtmosphereMode] = useState<AtmosphereMode>("auto");
+  const [soundEnabled, setSoundEnabled] = useState(false);
+  const soundEngineRef = useRef<MoodAudioEngine | null>(null);
+  const previousPhaseRef = useRef<Phase>("input");
   const currentMood = emotion?.primary_emotion || "平静";
+
+  const ensureSoundEngine = useCallback(() => {
+    if (!soundEngineRef.current && typeof window !== "undefined") {
+      soundEngineRef.current = new MoodAudioEngine();
+    }
+    return soundEngineRef.current;
+  }, []);
+
+  const playSound = useCallback((cue: SoundCue, mood = currentMood) => {
+    if (!soundEnabled) return;
+    const engine = ensureSoundEngine();
+    if (!engine) return;
+    void engine.resume().then(() => engine.play(cue, mood)).catch(() => undefined);
+  }, [currentMood, ensureSoundEngine, soundEnabled]);
+
+  const toggleSound = () => {
+    const next = !soundEnabled;
+    setSoundEnabled(next);
+    window.localStorage.setItem("vibechat-sound", next ? "on" : "off");
+    const engine = ensureSoundEngine();
+    if (next) {
+      void engine?.resume().then(() => {
+        engine.startMood(currentMood);
+        engine.play("receive", currentMood);
+      }).catch(() => undefined);
+    } else {
+      engine?.stopAmbient();
+    }
+  };
+
+  useEffect(() => {
+    setSoundEnabled(window.localStorage.getItem("vibechat-sound") === "on");
+    return () => soundEngineRef.current?.dispose();
+  }, []);
+
+  useEffect(() => {
+    const engine = ensureSoundEngine();
+    if (!soundEnabled) {
+      engine?.stopAmbient();
+      return;
+    }
+    if (!engine) return;
+    void engine.resume().then(() => engine.startMood(currentMood)).catch(() => undefined);
+  }, [currentMood, ensureSoundEngine, soundEnabled]);
+
+  useEffect(() => {
+    if (soundEnabled && previousPhaseRef.current !== "chat" && phase === "chat") {
+      playSound("match", currentMood);
+    }
+    previousPhaseRef.current = phase;
+  }, [currentMood, phase, playSound, soundEnabled]);
 
   const analyze = async (event: FormEvent) => {
     event.preventDefault();
@@ -366,6 +592,16 @@ export default function Home() {
             </button>
           ))}
         </div>
+        <button
+          aria-pressed={soundEnabled}
+          className={`soundToggle ${soundEnabled ? "active" : ""}`}
+          onClick={toggleSound}
+          title={soundEnabled ? "关闭情绪音效" : "开启情绪音效"}
+          type="button"
+        >
+          <span>{soundEnabled ? "声" : "静"}</span>
+          <i />
+        </button>
         <button className="registerButton" type="button">注册</button>
         <button className="loginButton" type="button">登录</button>
       </header>
@@ -401,7 +637,14 @@ export default function Home() {
           />
         )}
         {phase === "chat" && ticket && match?.conversation_id && match.access_token && (
-          <ChatPanel atmosphereMode={atmosphereMode} match={match} emotion={emotion} onLeave={reset} />
+          <ChatPanel
+            atmosphereMode={atmosphereMode}
+            match={match}
+            emotion={emotion}
+            onLeave={reset}
+            onReceiveSound={() => playSound("receive")}
+            onSendSound={() => playSound("send")}
+          />
         )}
       </section>
 
@@ -595,11 +838,15 @@ function ChatPanel({
   match,
   emotion,
   onLeave,
+  onReceiveSound,
+  onSendSound,
 }: {
   atmosphereMode: AtmosphereMode;
   match: MatchStatus;
   emotion: EmotionResult | null;
   onLeave: () => void;
+  onReceiveSound: () => void;
+  onSendSound: () => void;
 }) {
   const [conversation, setConversation] = useState<Conversation | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -609,18 +856,31 @@ function ChatPanel({
   const socketRef = useRef<WebSocket | null>(null);
   const listRef = useRef<HTMLDivElement | null>(null);
   const endRef = useRef<HTMLDivElement | null>(null);
+  const messagesRef = useRef<Message[]>([]);
+  const receivedInitialMessagesRef = useRef(false);
+  const receiveSoundRef = useRef(onReceiveSound);
   const shouldStickToBottomRef = useRef(true);
   const isNearBottom = useCallback(() => {
     const list = listRef.current;
     if (!list) return true;
     return list.scrollHeight - list.scrollTop - list.clientHeight < 120;
   }, []);
+  const selfAlias = conversation?.self_alias || match.alias || "我";
+
+  useEffect(() => {
+    receiveSoundRef.current = onReceiveSound;
+  }, [onReceiveSound]);
+
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
 
   useEffect(() => {
     if (!match.conversation_id || !match.access_token) return;
     let disposed = false;
     const token = encodeURIComponent(match.access_token);
     let restAvailable = false;
+    receivedInitialMessagesRef.current = false;
     const refreshConversation = () => fetch(`${CHAT_API_URL}/api/conversations/${match.conversation_id}?access_token=${token}`)
       .then(async (response) => {
         const payload = await response.json();
@@ -629,6 +889,14 @@ function ChatPanel({
           restAvailable = true;
           setConnection((current) => current === "online" ? current : "online");
           setConversation((current) => sameConversation(current, payload) ? current : payload);
+          if (
+            receivedInitialMessagesRef.current &&
+            hasNewIncomingMessage(messagesRef.current, payload.messages, selfAlias)
+          ) {
+            receiveSoundRef.current();
+          }
+          receivedInitialMessagesRef.current = true;
+          messagesRef.current = payload.messages;
           setMessages((current) => sameMessageList(current, payload.messages) ? current : payload.messages);
         }
       })
@@ -645,8 +913,13 @@ function ChatPanel({
     socket.onmessage = (event) => {
       const payload = JSON.parse(event.data);
       if (payload.type === "message") {
+        const incoming = payload.message as Message;
         shouldStickToBottomRef.current = shouldStickToBottomRef.current || isNearBottom();
-        setMessages((current) => current.some((item) => item.id === payload.message.id) ? current : [...current, payload.message]);
+        if (!messagesRef.current.some((item) => item.id === incoming.id)) {
+          if (incoming.sender_alias !== selfAlias) receiveSoundRef.current();
+          messagesRef.current = [...messagesRef.current, incoming];
+        }
+        setMessages((current) => current.some((item) => item.id === incoming.id) ? current : [...current, incoming]);
       }
     };
     return () => {
@@ -654,7 +927,7 @@ function ChatPanel({
       window.clearInterval(poller);
       socket.close();
     };
-  }, [isNearBottom, match.access_token, match.conversation_id]);
+  }, [isNearBottom, match.access_token, match.conversation_id, selfAlias]);
 
   useEffect(() => {
     if (!shouldStickToBottomRef.current) return;
@@ -675,6 +948,7 @@ function ChatPanel({
     shouldStickToBottomRef.current = true;
     if (socketRef.current?.readyState === WebSocket.OPEN) {
       socketRef.current.send(JSON.stringify({ type: "message", content }));
+      onSendSound();
       return;
     }
     try {
@@ -689,6 +963,8 @@ function ChatPanel({
       const payload = await response.json();
       if (!response.ok) throw new Error(apiErrorMessage(payload, "消息发送失败"));
       shouldStickToBottomRef.current = true;
+      onSendSound();
+      messagesRef.current = messagesRef.current.some((item) => item.id === payload.id) ? messagesRef.current : [...messagesRef.current, payload];
       setMessages((current) => current.some((item) => item.id === payload.id) ? current : [...current, payload]);
     } catch (reason) {
       setDraft(content);
@@ -697,7 +973,6 @@ function ChatPanel({
   };
 
   const score = Math.round((match.match_score || conversation?.match_score || 0) * 100);
-  const selfAlias = conversation?.self_alias || match.alias || "我";
   const guideEmotion = emotion?.primary_emotion || "复杂";
   const partnerIsGuide = Boolean(conversation?.partner_is_demo ?? match.partner_is_demo);
   return (

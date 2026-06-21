@@ -447,22 +447,28 @@ function ChatPanel({ match, onLeave }: { match: MatchStatus; onLeave: () => void
     if (!match.conversation_id || !match.access_token) return;
     let disposed = false;
     const token = encodeURIComponent(match.access_token);
-    fetch(`${API_URL}/api/conversations/${match.conversation_id}?access_token=${token}`)
+    let restAvailable = false;
+    const refreshConversation = () => fetch(`${API_URL}/api/conversations/${match.conversation_id}?access_token=${token}`)
       .then(async (response) => {
         const payload = await response.json();
         if (!response.ok) throw new Error(apiErrorMessage(payload, "无法进入这段对话"));
         if (!disposed) {
+          restAvailable = true;
+          setConnection("online");
           setConversation(payload);
           setMessages(payload.messages);
         }
       })
       .catch((reason) => !disposed && setError(reason.message));
 
+    refreshConversation();
+    const poller = window.setInterval(refreshConversation, 1500);
+
     const socket = new WebSocket(`${websocketBaseUrl()}/ws/conversations/${match.conversation_id}?token=${token}`);
     socketRef.current = socket;
     socket.onopen = () => !disposed && setConnection("online");
-    socket.onclose = () => !disposed && setConnection("offline");
-    socket.onerror = () => !disposed && setConnection("offline");
+    socket.onclose = () => !disposed && !restAvailable && setConnection("offline");
+    socket.onerror = () => !disposed && !restAvailable && setConnection("offline");
     socket.onmessage = (event) => {
       const payload = JSON.parse(event.data);
       if (payload.type === "message") {
@@ -471,6 +477,7 @@ function ChatPanel({ match, onLeave }: { match: MatchStatus; onLeave: () => void
     };
     return () => {
       disposed = true;
+      window.clearInterval(poller);
       socket.close();
     };
   }, [match.access_token, match.conversation_id]);
@@ -479,12 +486,31 @@ function ChatPanel({ match, onLeave }: { match: MatchStatus; onLeave: () => void
     endRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  const send = (event: FormEvent) => {
+  const send = async (event: FormEvent) => {
     event.preventDefault();
     const content = draft.trim();
-    if (!content || socketRef.current?.readyState !== WebSocket.OPEN) return;
-    socketRef.current.send(JSON.stringify({ type: "message", content }));
+    if (!content || !match.conversation_id || !match.access_token || connection !== "online") return;
     setDraft("");
+    if (socketRef.current?.readyState === WebSocket.OPEN) {
+      socketRef.current.send(JSON.stringify({ type: "message", content }));
+      return;
+    }
+    try {
+      const response = await fetch(
+        `${API_URL}/api/conversations/${match.conversation_id}/messages?access_token=${encodeURIComponent(match.access_token)}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ content }),
+        },
+      );
+      const payload = await response.json();
+      if (!response.ok) throw new Error(apiErrorMessage(payload, "消息发送失败"));
+      setMessages((current) => current.some((item) => item.id === payload.id) ? current : [...current, payload]);
+    } catch (reason) {
+      setDraft(content);
+      setError(reason instanceof Error ? reason.message : "消息发送失败");
+    }
   };
 
   const score = Math.round((match.match_score || conversation?.match_score || 0) * 100);

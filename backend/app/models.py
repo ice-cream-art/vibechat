@@ -30,6 +30,18 @@ class EmotionRequest(BaseModel):
         return value
 
 
+class MessageCreateRequest(BaseModel):
+    content: str = Field(min_length=1, max_length=1000)
+
+    @field_validator("content")
+    @classmethod
+    def normalize_content(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("消息不能为空")
+        return value
+
+
 class EmotionResult(BaseModel):
     primary_emotion: EmotionName
     secondary_emotions: list[EmotionName] = Field(default_factory=list, max_length=3)
@@ -82,4 +94,3 @@ class ConversationResponse(BaseModel):
     match_score: float
     match_reason: str
     messages: list[MessageRecord]
-

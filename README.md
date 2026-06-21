@@ -4,7 +4,7 @@
 
 VibeChat 是第三期灵治擂台赛作品。用户写下当前心情后，系统会分析主情绪、混合情绪、强度、正负向和关键词，并将这些字段真正用于匹配计算。匹配成功后，双方以系统生成的匿名身份进入实时聊天室。
 
-**在线体验：** https://sur-translations-hampton-clan.trycloudflare.com
+**在线体验：** https://vibechat-nine.vercel.app
 
 ## 核心功能
 
@@ -163,6 +163,7 @@ ANTHROPIC_MODEL=deepseek-v4-pro
 | `GET` | `/api/matches/{ticket_id}` | 查询匹配状态 |
 | `POST` | `/api/matches/{ticket_id}/demo` | 连接演示伙伴 |
 | `GET` | `/api/conversations/{id}` | 获取会话与消息 |
+| `POST` | `/api/conversations/{id}/messages` | 发送消息（REST 降级通道） |
 | `WS` | `/ws/conversations/{id}` | 实时收发消息 |
 
 匿名会话凭证由后端生成，聊天接口不会暴露真实身份。比赛版本的匿名机制适用于临时会话，不等同于端到端加密。
@@ -170,6 +171,8 @@ ANTHROPIC_MODEL=deepseek-v4-pro
 ## 公网部署
 
 仓库根目录的 `vercel.json` 支持将 Next.js 前端与 FastAPI 后端作为两个 Web Service 部署到同一个 Vercel 项目：前端位于 `/`，后端挂载到 `/_/backend`。前端未显式配置公网变量时会自动使用该同源路径。
+
+Vercel Functions 不支持充当 WebSocket 服务器，因此前端会在 WebSocket 不可用时自动切换到 REST 发送与短轮询接收；部署到支持长连接的容器平台时仍会优先使用 WebSocket。
 
 ### Vercel 多服务部署
 

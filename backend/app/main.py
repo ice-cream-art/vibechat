@@ -13,6 +13,8 @@ from .models import (
     MatchJoinRequest,
     MatchJoinResponse,
     MatchStatusResponse,
+    MessageCreateRequest,
+    MessageRecord,
 )
 from .store import Store
 
@@ -124,6 +126,21 @@ async def get_conversation(conversation_id: str, access_token: str = Query(min_l
         match_reason=conversation.match_reason,
         messages=conversation.messages,
     )
+
+
+@app.post("/api/conversations/{conversation_id}/messages", response_model=MessageRecord)
+async def post_message(
+    conversation_id: str,
+    request: MessageCreateRequest,
+    access_token: str = Query(min_length=12),
+) -> MessageRecord:
+    conversation = store.get_conversation(conversation_id, access_token)
+    if not conversation:
+        raise HTTPException(status_code=404, detail="会话不存在或凭证无效")
+    message = await store.add_message(conversation, access_token, request.content)
+    if store.has_demo_partner(conversation, access_token):
+        asyncio.create_task(send_demo_reply(conversation, access_token, request.content))
+    return message
 
 
 @app.websocket("/ws/conversations/{conversation_id}")

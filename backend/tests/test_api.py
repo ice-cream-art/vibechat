@@ -60,3 +60,29 @@ def test_full_two_user_match_and_websocket_chat() -> None:
             received = second_socket.receive_json()
             assert received["type"] == "message"
             assert received["message"]["content"] == "我有点紧张，你呢？"
+
+
+def test_rest_message_fallback() -> None:
+    reset_store()
+    ticket = join("今天有点累，想安静聊一会儿")
+    demo = client.post(
+        f"/api/matches/{ticket['ticket_id']}/demo",
+        params={"access_token": ticket["access_token"]},
+    )
+    assert demo.status_code == 200
+    conversation_id = demo.json()["conversation_id"]
+
+    sent = client.post(
+        f"/api/conversations/{conversation_id}/messages",
+        params={"access_token": ticket["access_token"]},
+        json={"content": "你好，想聊聊今天的心情。"},
+    )
+    assert sent.status_code == 200
+    assert sent.json()["content"] == "你好，想聊聊今天的心情。"
+
+    conversation = client.get(
+        f"/api/conversations/{conversation_id}",
+        params={"access_token": ticket["access_token"]},
+    )
+    assert conversation.status_code == 200
+    assert conversation.json()["messages"][0]["content"] == "你好，想聊聊今天的心情。"

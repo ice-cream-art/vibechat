@@ -74,7 +74,7 @@ button { color: inherit; }
   top: -40px;
   width: var(--size);
   height: var(--size);
-  opacity: .64;
+  opacity: .86;
   animation-duration: var(--duration);
   animation-delay: var(--delay);
   animation-iteration-count: infinite;
@@ -82,30 +82,30 @@ button { color: inherit; }
 }
 .atmosphere-snow .atmosphereParticle {
   border-radius: 50%;
-  background: rgba(255,255,255,.92);
-  border: 1px solid rgba(159, 201, 255, .45);
-  box-shadow: 0 0 18px rgba(155,201,255,.3);
+  background: rgba(255,255,255,.98);
+  border: 1px solid rgba(112, 183, 255, .64);
+  box-shadow: 0 0 20px rgba(112,183,255,.42), 0 0 6px rgba(49,199,189,.24);
   animation-name: atmosphereSnow;
 }
 .atmosphere-stars .atmosphereParticle {
   border-radius: 50%;
   background: #ffd976;
-  box-shadow: 0 0 16px rgba(255, 217, 118, .7), 0 0 30px rgba(244, 165, 207, .28);
+  box-shadow: 0 0 18px rgba(255, 217, 118, .86), 0 0 34px rgba(244, 165, 207, .36);
   animation-name: atmosphereStars;
 }
 .atmosphere-rain .atmosphereParticle {
-  width: 2px;
-  height: calc(var(--size) * 5);
+  width: 3px;
+  height: calc(var(--size) * 5.8);
   border-radius: 999px;
-  background: linear-gradient(180deg, rgba(108, 164, 255, 0), rgba(108, 164, 255, .42));
+  background: linear-gradient(180deg, rgba(108, 164, 255, 0), rgba(72, 154, 255, .58));
   transform: rotate(12deg);
   animation-name: atmosphereRain;
 }
 .atmosphere-bubbles .atmosphereParticle {
   border-radius: 50%;
-  border: 1px solid rgba(49,199,189,.36);
-  background: radial-gradient(circle at 32% 28%, rgba(255,255,255,.95), rgba(217,245,242,.34) 48%, rgba(244,165,207,.12));
-  box-shadow: 0 10px 26px rgba(49,199,189,.12);
+  border: 1px solid rgba(49,199,189,.58);
+  background: radial-gradient(circle at 32% 28%, rgba(255,255,255,.98), rgba(217,245,242,.48) 48%, rgba(244,165,207,.2));
+  box-shadow: 0 10px 28px rgba(49,199,189,.2);
   animation-name: atmosphereBubbles;
 }
 
@@ -486,15 +486,110 @@ textarea::placeholder { color: #aab5bd; }
 .connectionDot.connecting { background: #f4bf5f; box-shadow: 0 0 8px rgba(244,191,95,.8); }
 .connectionDot.offline { background: #aab4bc; box-shadow: none; }
 .anonymousBadge { color: var(--accent-strong); font-size: 12px; border: 1px solid #d7eeee; background: #f0fbfa; padding: 7px 10px; border-radius: 999px; }
-.messageList { min-height: 0; overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; padding: 28px 30px 34px; scrollbar-width: thin; scrollbar-color: #b8ced2 transparent; background: linear-gradient(180deg, #ffffff, #fbfdfd); }
+.messageList {
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 28px 30px 34px;
+  scrollbar-width: thin;
+  scrollbar-color: #b8ced2 transparent;
+  background:
+    radial-gradient(circle at 16% 18%, rgba(49,199,189,.11), transparent 28%),
+    radial-gradient(circle at 84% 64%, rgba(244,165,207,.1), transparent 30%),
+    linear-gradient(180deg, #ffffff, #f8fcfd);
+  position: relative;
+}
+.messageList::before,
+.messageList::after {
+  content: "";
+  position: sticky;
+  display: block;
+  left: 0;
+  width: 100%;
+  height: 0;
+  pointer-events: none;
+  z-index: 0;
+}
+.messageList::before {
+  top: 0;
+  min-height: 100%;
+  margin-bottom: -100%;
+  background-image:
+    radial-gradient(circle, rgba(49,199,189,.34) 0 2px, transparent 3px),
+    radial-gradient(circle, rgba(244,165,207,.28) 0 1.5px, transparent 3px),
+    radial-gradient(circle, rgba(112,183,255,.24) 0 2px, transparent 4px);
+  background-size: 110px 110px, 145px 145px, 180px 180px;
+  background-position: 18px 24px, 86px 62px, 36px 120px;
+  animation: chatParticles 18s linear infinite;
+  opacity: .95;
+}
+.messageList::after {
+  top: 0;
+  min-height: 100%;
+  margin-bottom: -100%;
+  background:
+    linear-gradient(115deg, transparent 0 38%, rgba(49,199,189,.08) 46%, transparent 54% 100%),
+    radial-gradient(circle at 72% 18%, rgba(255,217,118,.1), transparent 24%);
+  animation: chatGlow 12s ease-in-out infinite;
+}
+.messageList > * { position: relative; z-index: 1; }
+@keyframes chatParticles {
+  from { background-position: 18px 24px, 86px 62px, 36px 120px; }
+  to { background-position: 18px 134px, 86px -83px, 36px 300px; }
+}
+@keyframes chatGlow {
+  0%, 100% { opacity: .55; transform: translateX(-2%); }
+  50% { opacity: 1; transform: translateX(2%); }
+}
 .systemMessage { color: #8d9aa4; font-size: 12px; line-height: 1.8; text-align: center; padding: 8px 0 28px; }
 .systemMessage span { color: var(--accent); margin-right: 4px; }
 .systemMessage small { color: #a5b0b8; }
 .messageRow { display: flex; gap: 10px; margin: 0 0 20px; align-items: flex-end; }
 .messageRow.mine { justify-content: flex-end; }
 .messageRow > div { min-width: 0; max-width: min(72%, 620px); }
-.messageBubble { padding: 13px 16px; color: #384856; background: #f1f5f7; border: 1px solid #e2eaee; border-radius: 6px 16px 16px 16px; font-size: 14px; line-height: 1.7; overflow-wrap: anywhere; word-break: break-word; }
-.mine .messageBubble { color: #24323f; background: linear-gradient(135deg, #a8eee8, #ffd2e8); border-color: transparent; border-radius: 16px 6px 16px 16px; }
+.messageBubble {
+  --bubble-pos-a: 12px 18px;
+  --bubble-pos-b: 48px 30px;
+  --bubble-pos-a-end: 12px 86px;
+  --bubble-pos-b-end: 48px -62px;
+  padding: 13px 16px;
+  color: #384856;
+  background:
+    radial-gradient(circle, rgba(49,199,189,.22) 0 1.5px, transparent 2.5px),
+    radial-gradient(circle, rgba(112,183,255,.18) 0 1.4px, transparent 2.4px),
+    linear-gradient(180deg, #f6fafb, #edf4f6);
+  background-size: 76px 68px, 112px 92px, 100% 100%;
+  background-position: var(--bubble-pos-a), var(--bubble-pos-b), 0 0;
+  border: 1px solid #d8e8ec;
+  border-radius: 6px 16px 16px 16px;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.82), 0 10px 22px rgba(63, 86, 99, .06);
+  font-size: 14px;
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  animation: bubbleParticles 16s linear infinite;
+}
+.mine .messageBubble {
+  --bubble-pos-a: 16px 14px;
+  --bubble-pos-b: 56px 34px;
+  --bubble-pos-a-end: 16px 84px;
+  --bubble-pos-b-end: 56px -62px;
+  color: #24323f;
+  background:
+    radial-gradient(circle, rgba(255,255,255,.72) 0 1.8px, transparent 2.8px),
+    radial-gradient(circle, rgba(49,199,189,.3) 0 1.6px, transparent 2.8px),
+    linear-gradient(135deg, #91e7df, #f4bfdc);
+  background-size: 78px 70px, 118px 96px, 100% 100%;
+  background-position: var(--bubble-pos-a), var(--bubble-pos-b), 0 0;
+  border-color: transparent;
+  border-radius: 16px 6px 16px 16px;
+  box-shadow: 0 14px 26px rgba(49,199,189,.16);
+}
+@keyframes bubbleParticles {
+  from { background-position: var(--bubble-pos-a), var(--bubble-pos-b), 0 0; }
+  to { background-position: var(--bubble-pos-a-end), var(--bubble-pos-b-end), 0 0; }
+}
 .messageRow time { display: block; color: #a0abb3; font-size: 10px; margin-top: 5px; }
 .mine time { text-align: right; }
 .messageAvatar { width: 30px; height: 30px; font-size: 11px; }
@@ -556,7 +651,10 @@ textarea::placeholder { color: #aab5bd; }
   .atmosphereParticle,
   .radarRing,
   .floatingDot,
-  .miniSpinner {
+  .miniSpinner,
+  .messageList::before,
+  .messageList::after,
+  .messageBubble {
     animation: none !important;
   }
   .atmosphereParticle { opacity: .18; transform: none !important; }

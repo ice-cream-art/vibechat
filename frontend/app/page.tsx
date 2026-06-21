@@ -162,14 +162,16 @@ function atmosphereForMood(mood: string): Exclude<AtmosphereMode, "auto" | "off"
 function AtmosphereLayer({
   mode,
   mood,
+  variant = "page",
 }: {
   mode: AtmosphereMode;
   mood: string;
+  variant?: "page" | "panel";
 }) {
   const resolvedMode = mode === "auto" ? atmosphereForMood(mood) : mode;
   if (resolvedMode === "off") return null;
   return (
-    <div className={`atmosphere atmosphere-${resolvedMode}`} aria-hidden="true">
+    <div className={`atmosphere ${variant === "panel" ? "atmosphereInline" : ""} atmosphere-${resolvedMode}`} aria-hidden="true">
       {Array.from({ length: 26 }, (_, index) => (
         <span
           className="atmosphereParticle"
@@ -399,7 +401,7 @@ export default function Home() {
           />
         )}
         {phase === "chat" && ticket && match?.conversation_id && match.access_token && (
-          <ChatPanel match={match} emotion={emotion} onLeave={reset} />
+          <ChatPanel atmosphereMode={atmosphereMode} match={match} emotion={emotion} onLeave={reset} />
         )}
       </section>
 
@@ -589,10 +591,12 @@ function MatchingPanel({
 }
 
 function ChatPanel({
+  atmosphereMode,
   match,
   emotion,
   onLeave,
 }: {
+  atmosphereMode: AtmosphereMode;
   match: MatchStatus;
   emotion: EmotionResult | null;
   onLeave: () => void;
@@ -723,6 +727,7 @@ function ChatPanel({
           <span className="anonymousBadge">匿名会话</span>
         </header>
         <div className="messageList" ref={listRef} aria-live="polite">
+          <AtmosphereLayer mode={atmosphereMode} mood={guideEmotion} variant="panel" />
           <div className="systemMessage"><span>✦</span> 你们因为相近的情绪频率来到这里<br /><small>不用急着表现，做此刻的自己就好</small></div>
           {messages.map((message) => {
             const mine = message.sender_alias === selfAlias;

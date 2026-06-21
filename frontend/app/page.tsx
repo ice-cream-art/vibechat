@@ -57,15 +57,19 @@ const API_URL = (
   (process.env.NODE_ENV === "production" ? "/_/backend" : "http://localhost:8000")
 ).replace(/\/$/, "");
 
+const CHAT_API_URL = (
+  process.env.NEXT_PUBLIC_CHAT_API_URL || API_URL
+).replace(/\/$/, "");
+
 function websocketBaseUrl() {
   if (process.env.NEXT_PUBLIC_WS_URL) {
     return process.env.NEXT_PUBLIC_WS_URL.replace(/\/$/, "");
   }
-  if (API_URL.startsWith("/") && typeof window !== "undefined") {
+  if (CHAT_API_URL.startsWith("/") && typeof window !== "undefined") {
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-    return `${protocol}//${window.location.host}${API_URL}`;
+    return `${protocol}//${window.location.host}${CHAT_API_URL}`;
   }
-  return API_URL.replace(/^http/, "ws");
+  return CHAT_API_URL.replace(/^http/, "ws");
 }
 
 const examples = [
@@ -131,7 +135,7 @@ export default function Home() {
     setLoading(true);
     setError("");
     try {
-      const response = await fetch(`${API_URL}/api/matches/join`, {
+      const response = await fetch(`${CHAT_API_URL}/api/matches/join`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ emotion, source_text: text.trim() }),
@@ -151,7 +155,7 @@ export default function Home() {
     if (!ticket) return;
     try {
       const response = await fetch(
-        `${API_URL}/api/matches/${ticket.ticket_id}?access_token=${encodeURIComponent(ticket.access_token)}`,
+        `${CHAT_API_URL}/api/matches/${ticket.ticket_id}?access_token=${encodeURIComponent(ticket.access_token)}`,
         { cache: "no-store" }
       );
       if (!response.ok) return;
@@ -175,7 +179,7 @@ export default function Home() {
     setLoading(true);
     try {
       const response = await fetch(
-        `${API_URL}/api/matches/${ticket.ticket_id}/demo?access_token=${encodeURIComponent(ticket.access_token)}`,
+        `${CHAT_API_URL}/api/matches/${ticket.ticket_id}/demo?access_token=${encodeURIComponent(ticket.access_token)}`,
         { method: "POST" }
       );
       const payload = await response.json();
@@ -192,7 +196,7 @@ export default function Home() {
   const cancelMatch = async () => {
     if (ticket) {
       await fetch(
-        `${API_URL}/api/matches/${ticket.ticket_id}/cancel?access_token=${encodeURIComponent(ticket.access_token)}`,
+        `${CHAT_API_URL}/api/matches/${ticket.ticket_id}/cancel?access_token=${encodeURIComponent(ticket.access_token)}`,
         { method: "POST" }
       ).catch(() => undefined);
     }
@@ -448,7 +452,7 @@ function ChatPanel({ match, onLeave }: { match: MatchStatus; onLeave: () => void
     let disposed = false;
     const token = encodeURIComponent(match.access_token);
     let restAvailable = false;
-    const refreshConversation = () => fetch(`${API_URL}/api/conversations/${match.conversation_id}?access_token=${token}`)
+    const refreshConversation = () => fetch(`${CHAT_API_URL}/api/conversations/${match.conversation_id}?access_token=${token}`)
       .then(async (response) => {
         const payload = await response.json();
         if (!response.ok) throw new Error(apiErrorMessage(payload, "无法进入这段对话"));
@@ -497,7 +501,7 @@ function ChatPanel({ match, onLeave }: { match: MatchStatus; onLeave: () => void
     }
     try {
       const response = await fetch(
-        `${API_URL}/api/conversations/${match.conversation_id}/messages?access_token=${encodeURIComponent(match.access_token)}`,
+        `${CHAT_API_URL}/api/conversations/${match.conversation_id}/messages?access_token=${encodeURIComponent(match.access_token)}`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },

@@ -10,8 +10,10 @@ RUN corepack enable
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 ARG NEXT_PUBLIC_API_URL
+ARG NEXT_PUBLIC_CHAT_API_URL
 ARG NEXT_PUBLIC_WS_URL
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL \
+    NEXT_PUBLIC_CHAT_API_URL=$NEXT_PUBLIC_CHAT_API_URL \
     NEXT_PUBLIC_WS_URL=$NEXT_PUBLIC_WS_URL
 RUN pnpm build
 
@@ -24,4 +26,3 @@ COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
 EXPOSE 3000
 CMD ["node", "server.js"]
-

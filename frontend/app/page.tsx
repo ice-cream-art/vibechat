@@ -52,10 +52,21 @@ type Conversation = {
   messages: Message[];
 };
 
-const API_URL = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000").replace(/\/$/, "");
-const WS_URL = (
-  process.env.NEXT_PUBLIC_WS_URL || API_URL.replace(/^http/, "ws")
+const API_URL = (
+  process.env.NEXT_PUBLIC_API_URL ||
+  (process.env.NODE_ENV === "production" ? "/_/backend" : "http://localhost:8000")
 ).replace(/\/$/, "");
+
+function websocketBaseUrl() {
+  if (process.env.NEXT_PUBLIC_WS_URL) {
+    return process.env.NEXT_PUBLIC_WS_URL.replace(/\/$/, "");
+  }
+  if (API_URL.startsWith("/") && typeof window !== "undefined") {
+    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+    return `${protocol}//${window.location.host}${API_URL}`;
+  }
+  return API_URL.replace(/^http/, "ws");
+}
 
 const examples = [
   "比赛快开始了，我既期待又有点紧张",
@@ -447,7 +458,7 @@ function ChatPanel({ match, onLeave }: { match: MatchStatus; onLeave: () => void
       })
       .catch((reason) => !disposed && setError(reason.message));
 
-    const socket = new WebSocket(`${WS_URL}/ws/conversations/${match.conversation_id}?token=${token}`);
+    const socket = new WebSocket(`${websocketBaseUrl()}/ws/conversations/${match.conversation_id}?token=${token}`);
     socketRef.current = socket;
     socket.onopen = () => !disposed && setConnection("online");
     socket.onclose = () => !disposed && setConnection("offline");
@@ -533,4 +544,3 @@ function ChatPanel({ match, onLeave }: { match: MatchStatus; onLeave: () => void
     </div>
   );
 }
-

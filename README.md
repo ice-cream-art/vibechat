@@ -169,6 +169,16 @@ ANTHROPIC_MODEL=deepseek-v4-pro
 
 ## 公网部署
 
+仓库根目录的 `vercel.json` 支持将 Next.js 前端与 FastAPI 后端作为两个 Web Service 部署到同一个 Vercel 项目：前端位于 `/`，后端挂载到 `/_/backend`。前端未显式配置公网变量时会自动使用该同源路径。
+
+### Vercel 多服务部署
+
+1. 导入 GitHub 仓库根目录，Vercel 会读取 `experimentalServices`。
+2. 在项目 Secret 中配置后端的 `LLM_PROVIDER`、两套 API Key、Base URL 与模型名。
+3. 部署后验证 `/_/backend/health` 和 `/_/backend/docs`。
+
+### 分离部署
+
 1. 将 `backend/` 部署到支持持续运行和 WebSocket 的容器服务，保持单实例。
 2. 配置后端 Provider 密钥、模型、`CORS_ORIGINS=https://前端域名`。
 3. 将 `frontend/` 部署到 Next.js 托管服务，并在构建阶段设置：

@@ -77,6 +77,7 @@ class MatchStatusResponse(BaseModel):
     match_score: float | None = None
     match_reason: str | None = None
     demo_available: bool = False
+    partner_is_demo: bool = False
 
 
 class MessageRecord(BaseModel):
@@ -94,3 +95,4 @@ class ConversationResponse(BaseModel):
     match_score: float
     match_reason: str
     messages: list[MessageRecord]
+    partner_is_demo: bool = False

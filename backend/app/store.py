@@ -13,6 +13,9 @@ from fastapi import WebSocket
 from .models import EmotionResult, MessageRecord
 
 
+WAITING_ACTIVE_SECONDS = 6
+
+
 ADJECTIVES = ["安静", "柔软", "清醒", "闪光", "慢热", "勇敢", "自由", "温暖"]
 NOUNS = ["海獭", "鲸鱼", "狐狸", "云朵", "星球", "小鹿", "灯塔", "飞鸟"]
 
@@ -225,7 +228,11 @@ class Store:
         lock_token = await self._acquire_redis_lock()
         try:
             ticket = self._new_ticket(emotion, source_text)
-            waiting_ids = await self._redis("ZRANGE", "vibechat:waiting", 0, 99)
+            cutoff = datetime.now(timezone.utc).timestamp() - WAITING_ACTIVE_SECONDS
+            await self._redis("ZREMRANGEBYSCORE", "vibechat:waiting", "-inf", cutoff)
+            waiting_ids = await self._redis(
+                "ZRANGEBYSCORE", "vibechat:waiting", cutoff, "+inf", "LIMIT", 0, 100
+            )
             ranked: list[tuple[float, Ticket]] = []
             for ticket_id in waiting_ids or []:
                 candidate = await self._load_ticket(ticket_id)
@@ -305,7 +312,13 @@ class Store:
 
     async def get_ticket(self, ticket_id: str, access_token: str) -> Ticket | None:
         ticket = await self._load_ticket(ticket_id) if self.redis_enabled else self.tickets.get(ticket_id)
-        return ticket if ticket and secrets.compare_digest(ticket.access_token, access_token) else None
+        if not ticket or not secrets.compare_digest(ticket.access_token, access_token):
+            return None
+        if self.redis_enabled and ticket.status == "waiting":
+            await self._redis(
+                "ZADD", "vibechat:waiting", datetime.now(timezone.utc).timestamp(), ticket.id
+            )
+        return ticket
 
     async def cancel_ticket(self, ticket: Ticket) -> Ticket:
         if ticket.status != "waiting":

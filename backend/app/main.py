@@ -100,6 +100,7 @@ async def status_payload(ticket) -> MatchStatusResponse:
         partner_alias=store.partner_alias(conversation, ticket.access_token),
         match_score=conversation.match_score,
         match_reason=conversation.match_reason,
+        partner_is_demo=store.has_demo_partner(conversation, ticket.access_token),
     )
 
 
@@ -144,6 +145,7 @@ async def get_conversation(conversation_id: str, access_token: str = Query(min_l
         match_score=conversation.match_score,
         match_reason=conversation.match_reason,
         messages=conversation.messages,
+        partner_is_demo=store.has_demo_partner(conversation, access_token),
     )
 
 

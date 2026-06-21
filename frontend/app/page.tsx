@@ -34,6 +34,7 @@ type MatchStatus = {
   match_score?: number;
   match_reason?: string;
   demo_available: boolean;
+  partner_is_demo?: boolean;
 };
 
 type Message = {
@@ -50,6 +51,7 @@ type Conversation = {
   match_score: number;
   match_reason: string;
   messages: Message[];
+  partner_is_demo?: boolean;
 };
 
 const API_URL = (
@@ -537,7 +539,7 @@ function ChatPanel({ match, onLeave }: { match: MatchStatus; onLeave: () => void
         <header className="chatHeader">
           <div className="partnerIdentity">
             <span className="avatar">{(match.partner_alias || "同").slice(0, 1)}</span>
-            <div><b>{match.partner_alias || "同频的人"}</b><span><i className={`connectionDot ${connection}`} />{connection === "online" ? "此刻在线" : connection === "connecting" ? "正在连接" : "连接已断开"}</span></div>
+            <div><b>{match.partner_alias || "同频的人"}</b><span><i className={`connectionDot ${connection}`} />{(conversation?.partner_is_demo ?? match.partner_is_demo) ? "同频向导 · 自动回复" : connection === "online" ? "真人伙伴 · 等待回复" : connection === "connecting" ? "正在连接" : "连接已断开"}</span></div>
           </div>
           <span className="anonymousBadge">匿名会话</span>
         </header>

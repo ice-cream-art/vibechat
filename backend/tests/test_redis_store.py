@@ -35,6 +35,24 @@ class FakeRedisStore(Store):
             members = [item[0] for item in sorted(self.sorted_sets[key].items(), key=lambda item: item[1])]
             stop = len(members) if int(end) == -1 else int(end) + 1
             return members[int(start):stop]
+        if name == "ZRANGEBYSCORE":
+            key, minimum, maximum, _, offset, count = args
+            lower = float("-inf") if minimum == "-inf" else float(minimum)
+            upper = float("inf") if maximum == "+inf" else float(maximum)
+            members = [
+                item[0]
+                for item in sorted(self.sorted_sets[key].items(), key=lambda item: item[1])
+                if lower <= item[1] <= upper
+            ]
+            return members[int(offset):int(offset) + int(count)]
+        if name == "ZREMRANGEBYSCORE":
+            key, minimum, maximum = args
+            lower = float("-inf") if minimum == "-inf" else float(minimum)
+            upper = float("inf") if maximum == "+inf" else float(maximum)
+            stale = [member for member, score in self.sorted_sets[key].items() if lower <= score <= upper]
+            for member in stale:
+                self.sorted_sets[key].pop(member, None)
+            return len(stale)
         if name == "ZREM":
             key, member = args
             return int(self.sorted_sets[key].pop(member, None) is not None)
@@ -75,5 +93,22 @@ def test_redis_store_shares_matches_and_messages_across_instances() -> None:
         refreshed = await first_instance.get_conversation(first_status.conversation_id or "", first.access_token)
         assert refreshed is not None
         assert refreshed.messages[0].content == "我们一起慢慢来。"
+
+    asyncio.run(scenario())
+
+
+def test_redis_store_does_not_match_inactive_waiting_user() -> None:
+    async def scenario() -> None:
+        FakeRedisStore.values.clear()
+        FakeRedisStore.sorted_sets.clear()
+        store = FakeRedisStore(redis_url="https://redis.test", redis_token="test")
+
+        inactive = await store.join(emotion(), "我先离开了")
+        FakeRedisStore.sorted_sets["vibechat:waiting"][inactive.id] = 0
+        active = await store.join(emotion(), "我正在等待")
+
+        assert inactive.status == "waiting"
+        assert active.status == "waiting"
+        assert inactive.id not in FakeRedisStore.sorted_sets["vibechat:waiting"]
 
     asyncio.run(scenario())

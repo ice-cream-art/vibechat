@@ -121,10 +121,10 @@ def test_demo_guide_replies_to_user_question_without_repeating_template() -> Non
     guide_replies = [
         message["content"]
         for message in conversation.json()["messages"]
-        if message["sender_alias"].startswith("同频向导")
+        if message["sender_alias"] == "飞行雪绒"
     ]
     assert len(guide_replies) == 2
-    assert "同频向导" in guide_replies[0]
+    assert "飞行雪绒" in guide_replies[0]
     assert "模板" in guide_replies[1] or "接住" in guide_replies[1]
     assert guide_replies[0] != guide_replies[1]
 
@@ -153,7 +153,7 @@ def test_demo_reply_skips_stale_user_message() -> None:
         assert [
             message
             for message in refreshed.messages
-            if message.sender_alias.startswith("同频向导")
+            if message.sender_alias == "飞行雪绒"
         ] == []
 
     asyncio.run(scenario())

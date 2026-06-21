@@ -398,14 +398,9 @@ function GuideAvatar({
 }) {
   const meta = guideAvatarMeta[emotion || ""] || guideAvatarMeta["复杂"];
   return (
-    <span className={`guideAvatar guideAvatar-${meta.tone} guideAvatar-${size}`} aria-label={`${emotion || "复杂"}同频向导头像`}>
+    <span className={`guideAvatar guideAvatar-${meta.tone} guideAvatar-${size}`} aria-label={`飞行雪绒头像`}>
       <span className="guideAvatarHalo" />
-      <span className="guideAvatarHead">
-        <span className="guideAvatarFringe" />
-        <span className="guideAvatarEye guideAvatarEyeLeft" />
-        <span className="guideAvatarEye guideAvatarEyeRight" />
-        <span className="guideAvatarMouth">{meta.face}</span>
-      </span>
+      <img className="guideAvatarImage" src="/guide-avatar.webp" alt="" />
       <span className="guideAvatarBadge">{meta.badge}</span>
     </span>
   );
@@ -850,7 +845,7 @@ function MatchingPanel({
       </div>
       {demoAvailable && (
         <button className="secondaryButton" onClick={onDemo} disabled={loading}>
-          {loading ? "正在连接…" : "先和同频向导聊聊"}
+          {loading ? "正在连接…" : "先和飞行雪绒聊聊"}
         </button>
       )}
       <button className="textButton cancelButton" onClick={onCancel}>退出匹配</button>
@@ -1057,7 +1052,7 @@ function ChatPanel({
             ) : (
               <span className="avatar">{(match.partner_alias || "同").slice(0, 1)}</span>
             )}
-            <div><b>{match.partner_alias || "同频的人"}</b><span><i className={`connectionDot ${connection}`} />{(conversation?.partner_is_demo ?? match.partner_is_demo) ? "同频向导 · 自动回复" : connection === "online" ? "真人伙伴 · 等待回复" : connection === "connecting" ? "正在连接" : "连接已断开"}</span></div>
+            <div><b>{match.partner_alias || "同频的人"}</b><span><i className={`connectionDot ${connection}`} />{(conversation?.partner_is_demo ?? match.partner_is_demo) ? "飞行雪绒 · 自动回复" : connection === "online" ? "真人伙伴 · 等待回复" : connection === "connecting" ? "正在连接" : "连接已断开"}</span></div>
           </div>
           <span className="anonymousBadge">匿名会话</span>
         </header>
@@ -1066,7 +1061,7 @@ function ChatPanel({
           <div className="systemMessage"><span>✦</span> 你们因为相近的情绪频率来到这里<br /><small>不用急着表现，做此刻的自己就好</small></div>
           {messages.map((message) => {
             const mine = message.sender_alias === selfAlias;
-            const guideMessage = !mine && message.sender_alias.startsWith("同频向导");
+            const guideMessage = partnerIsGuide && !mine;
             return (
               <div className={`messageRow ${mine ? "mine" : "theirs"}`} key={message.id}>
                 {!mine && (
@@ -1086,7 +1081,7 @@ function ChatPanel({
                         className={`speechButton ${speakingMessageId === message.id ? "active" : ""}`}
                         disabled={!speechSupported}
                         onClick={() => speakGuideMessage(message)}
-                        title={speechSupported ? "用同频向导原创声线朗读" : "当前浏览器不支持朗读"}
+                        title={speechSupported ? "用飞行雪绒原创声线朗读" : "当前浏览器不支持朗读"}
                         type="button"
                       >
                         <span>{speakingMessageId === message.id ? "停止" : "朗读"}</span>

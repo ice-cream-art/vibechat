@@ -72,19 +72,19 @@ def test_provider_adapters_share_one_schema() -> None:
 
 def test_companion_reply_cleanup_does_not_leave_half_sentence() -> None:
     reply = _clean_companion_reply(
-        "哈哈，这个开场自带 BGM 啊~ 我是 VibeChat 的同频向导，不是真人用户，但能接住你的幽默。"
+        "哈哈，这个开场自带 BGM 啊~ 我是 VibeChat 的飞行雪绒，不是真人用户，但能接住你的幽默。"
         "练习两年半一定攒了不少经历，今天是想随便聊聊，还是有什么"
     )
     assert reply.endswith(("。", "？", "！", "?", "!", "…", "~", "～"))
 
 
 def test_guide_prompt_guards_original_style_from_character_names() -> None:
-    assert "同频向导" in GUIDE_SYSTEM_PROMPT
+    assert "飞行雪绒" in GUIDE_SYSTEM_PROMPT
     assert "爱弥斯" in GUIDE_SYSTEM_PROMPT
     assert "不要提爱弥斯" in GUIDE_SYSTEM_PROMPT
 
 
 def test_demo_companion_reply_keeps_soft_guide_style() -> None:
     reply = build_demo_companion_reply("你是谁")
-    assert "同频向导" in reply
+    assert "飞行雪绒" in reply
     assert "真人匹配对象" in reply

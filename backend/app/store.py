@@ -320,7 +320,7 @@ class Store:
         return Ticket(
             id=str(uuid.uuid4()),
             access_token=secrets.token_urlsafe(24),
-            alias="同频向导·07",
+            alias="飞行雪绒",
             emotion=emotion,
             source_text="演示伙伴",
         )

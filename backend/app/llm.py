@@ -278,12 +278,11 @@ def _clean_companion_reply(text: str) -> str:
     cleaned = re.sub(r"^```(?:text)?\s*", "", text.strip(), flags=re.IGNORECASE)
     cleaned = re.sub(r"\s*```$", "", cleaned).strip()
     cleaned = cleaned.strip("\"“”")
-    return cleaned[:300] or "我在。你刚才这句我接住了，我们可以慢慢说，不用一下子整理得很完整。"
+    return cleaned[:300]
 
 
 def build_demo_companion_reply(user_message: str) -> str:
     text = user_message.strip()
-    lower = text.lower()
     asks_identity = any(word in text for word in ["你是谁", "你是人吗", "机器人", "AI", "ai", "向导"])
     asks_understanding = any(word in text for word in ["知道我说什么", "听懂", "懂吗", "什么意思", "你知道"])
     asks_advice = any(word in text for word in ["怎么办", "咋办", "建议", "怎么做", "如何"])
@@ -321,6 +320,9 @@ async def generate_companion_reply(
 ) -> str:
     provider = settings.llm_provider.lower().strip()
     recent_messages = recent_messages or []
+    direct_reply = build_demo_companion_reply(user_message)
+    if any(word in user_message for word in ["你是谁", "你是人吗", "机器人", "AI", "ai", "向导", "知道我说什么", "听懂", "懂吗"]):
+        return direct_reply
     try:
         if provider == "openai" and settings.openai_api_key:
             messages = [{"role": "system", "content": GUIDE_SYSTEM_PROMPT}]
@@ -338,7 +340,8 @@ async def generate_companion_reply(
                     },
                 )
                 response.raise_for_status()
-                return _clean_companion_reply(response.json()["choices"][0]["message"]["content"])
+                reply = _clean_companion_reply(response.json()["choices"][0]["message"]["content"])
+                return reply or direct_reply
         if provider == "anthropic" and settings.anthropic_api_key:
             anthropic_messages = recent_messages[-10:] + [{"role": "user", "content": user_message}]
             async with httpx.AsyncClient(timeout=25) as client:
@@ -359,7 +362,8 @@ async def generate_companion_reply(
                 response.raise_for_status()
                 content = response.json()["content"]
                 raw = next(item["text"] for item in content if item.get("type") == "text")
-                return _clean_companion_reply(raw)
+                reply = _clean_companion_reply(raw)
+                return reply or direct_reply
     except (httpx.HTTPError, KeyError, IndexError, StopIteration, TypeError, ValueError):
         pass
-    return build_demo_companion_reply(user_message)
+    return direct_reply

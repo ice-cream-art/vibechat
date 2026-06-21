@@ -101,6 +101,22 @@ function apiErrorMessage(payload: unknown, fallback: string) {
   return fallback;
 }
 
+function sameMessageList(current: Message[], next: Message[]) {
+  return current.length === next.length && current.every((message, index) => message.id === next[index]?.id);
+}
+
+function sameConversation(current: Conversation | null, next: Conversation) {
+  return Boolean(
+    current &&
+    current.id === next.id &&
+    current.self_alias === next.self_alias &&
+    current.partner_alias === next.partner_alias &&
+    current.match_score === next.match_score &&
+    current.match_reason === next.match_reason &&
+    current.partner_is_demo === next.partner_is_demo
+  );
+}
+
 export default function Home() {
   const [phase, setPhase] = useState<Phase>("input");
   const [text, setText] = useState("");
@@ -447,7 +463,9 @@ function ChatPanel({ match, onLeave }: { match: MatchStatus; onLeave: () => void
   const [connection, setConnection] = useState<"connecting" | "online" | "offline">("connecting");
   const [error, setError] = useState("");
   const socketRef = useRef<WebSocket | null>(null);
+  const listRef = useRef<HTMLDivElement | null>(null);
   const endRef = useRef<HTMLDivElement | null>(null);
+  const shouldStickToBottomRef = useRef(true);
 
   useEffect(() => {
     if (!match.conversation_id || !match.access_token) return;
@@ -460,9 +478,9 @@ function ChatPanel({ match, onLeave }: { match: MatchStatus; onLeave: () => void
         if (!response.ok) throw new Error(apiErrorMessage(payload, "无法进入这段对话"));
         if (!disposed) {
           restAvailable = true;
-          setConnection("online");
-          setConversation(payload);
-          setMessages(payload.messages);
+          setConnection((current) => current === "online" ? current : "online");
+          setConversation((current) => sameConversation(current, payload) ? current : payload);
+          setMessages((current) => sameMessageList(current, payload.messages) ? current : payload.messages);
         }
       })
       .catch((reason) => !disposed && setError(reason.message));
@@ -489,7 +507,14 @@ function ChatPanel({ match, onLeave }: { match: MatchStatus; onLeave: () => void
   }, [match.access_token, match.conversation_id]);
 
   useEffect(() => {
-    endRef.current?.scrollIntoView({ behavior: "smooth" });
+    if (!shouldStickToBottomRef.current) return;
+    const list = listRef.current;
+    if (list) {
+      list.scrollTop = list.scrollHeight;
+    } else {
+      endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+    }
+    shouldStickToBottomRef.current = messages.length === 0;
   }, [messages]);
 
   const send = async (event: FormEvent) => {
@@ -497,6 +522,7 @@ function ChatPanel({ match, onLeave }: { match: MatchStatus; onLeave: () => void
     const content = draft.trim();
     if (!content || !match.conversation_id || !match.access_token || connection !== "online") return;
     setDraft("");
+    shouldStickToBottomRef.current = true;
     if (socketRef.current?.readyState === WebSocket.OPEN) {
       socketRef.current.send(JSON.stringify({ type: "message", content }));
       return;
@@ -512,6 +538,7 @@ function ChatPanel({ match, onLeave }: { match: MatchStatus; onLeave: () => void
       );
       const payload = await response.json();
       if (!response.ok) throw new Error(apiErrorMessage(payload, "消息发送失败"));
+      shouldStickToBottomRef.current = true;
       setMessages((current) => current.some((item) => item.id === payload.id) ? current : [...current, payload]);
     } catch (reason) {
       setDraft(content);
@@ -543,7 +570,7 @@ function ChatPanel({ match, onLeave }: { match: MatchStatus; onLeave: () => void
           </div>
           <span className="anonymousBadge">匿名会话</span>
         </header>
-        <div className="messageList" aria-live="polite">
+        <div className="messageList" ref={listRef} aria-live="polite">
           <div className="systemMessage"><span>✦</span> 你们因为相近的情绪频率来到这里<br /><small>不用急着表现，做此刻的自己就好</small></div>
           {messages.map((message) => {
             const mine = message.sender_alias === selfAlias;

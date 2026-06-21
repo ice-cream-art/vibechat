@@ -597,8 +597,37 @@ textarea::placeholder { color: #aab5bd; }
   from { background-position: var(--bubble-pos-a), var(--bubble-pos-b), 0 0; }
   to { background-position: var(--bubble-pos-a-end), var(--bubble-pos-b-end), 0 0; }
 }
-.messageRow time { display: block; color: #a0abb3; font-size: 10px; margin-top: 5px; }
-.mine time { text-align: right; }
+.messageMeta { display: flex; align-items: center; gap: 8px; margin-top: 5px; }
+.mine .messageMeta { justify-content: flex-end; }
+.messageRow time { display: block; color: #a0abb3; font-size: 10px; }
+.speechButton {
+  height: 24px;
+  border: 1px solid #d8eaee;
+  border-radius: 999px;
+  background: rgba(255,255,255,.88);
+  color: #6f818b;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 9px;
+  font-size: 11px;
+  font-weight: 800;
+  box-shadow: 0 7px 16px rgba(49,199,189,.08);
+  transition: .18s;
+}
+.speechButton::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--accent), #8fdff2);
+  box-shadow: 0 0 10px rgba(49,199,189,.42);
+}
+.speechButton:hover { color: var(--accent-strong); border-color: #bce4e6; background: #f4fcfb; }
+.speechButton.active { color: white; border-color: transparent; background: linear-gradient(135deg, var(--accent), #5ccde8); }
+.speechButton.active::before { background: white; box-shadow: 0 0 10px rgba(255,255,255,.82); }
+.speechButton:disabled { opacity: .45; cursor: not-allowed; box-shadow: none; }
 .messageAvatar { width: 30px; height: 30px; font-size: 11px; }
 .messageComposer { display: flex; align-items: center; gap: 12px; padding: 14px 26px 16px; border-top: 1px solid var(--line); background: white; }
 .messageComposer input { flex: 1; height: 48px; padding: 0 16px; border: 1px solid #dfe9ee; background: #fbfdfe; color: var(--ink); outline: none; border-radius: 10px; font-size: 13px; }

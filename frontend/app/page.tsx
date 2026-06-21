@@ -171,6 +171,31 @@ function soundFamilyForMood(mood: string): Exclude<AtmosphereMode, "auto" | "off
   return atmosphereForMood(mood);
 }
 
+function guideSpeechVoice() {
+  if (typeof window === "undefined" || !("speechSynthesis" in window)) return null;
+  const voices = window.speechSynthesis.getVoices();
+  const chineseVoices = voices.filter((voice) => /zh|cmn|Chinese|中文/i.test(`${voice.lang} ${voice.name}`));
+  const preferred = [
+    "Xiaoxiao",
+    "晓晓",
+    "Xiaoyi",
+    "晓伊",
+    "Huihui",
+    "慧慧",
+    "Ting-Ting",
+    "Mei-Jia",
+    "Yaoyao",
+    "瑶瑶",
+  ];
+  return (
+    chineseVoices.find((voice) => preferred.some((name) => voice.name.includes(name))) ||
+    chineseVoices.find((voice) => voice.lang.toLowerCase().includes("zh-cn")) ||
+    chineseVoices[0] ||
+    voices[0] ||
+    null
+  );
+}
+
 function createAudioContext() {
   const AudioContextClass = window.AudioContext || (window as Window & typeof globalThis & {
     webkitAudioContext?: typeof AudioContext;
@@ -853,6 +878,8 @@ function ChatPanel({
   const [draft, setDraft] = useState("");
   const [connection, setConnection] = useState<"connecting" | "online" | "offline">("connecting");
   const [error, setError] = useState("");
+  const [speakingMessageId, setSpeakingMessageId] = useState<string | null>(null);
+  const [speechSupported, setSpeechSupported] = useState(false);
   const socketRef = useRef<WebSocket | null>(null);
   const listRef = useRef<HTMLDivElement | null>(null);
   const endRef = useRef<HTMLDivElement | null>(null);
@@ -874,6 +901,18 @@ function ChatPanel({
   useEffect(() => {
     messagesRef.current = messages;
   }, [messages]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
+    setSpeechSupported(true);
+    const loadVoices = () => setSpeechSupported(window.speechSynthesis.getVoices().length >= 0);
+    window.speechSynthesis.addEventListener?.("voiceschanged", loadVoices);
+    loadVoices();
+    return () => {
+      window.speechSynthesis.cancel();
+      window.speechSynthesis.removeEventListener?.("voiceschanged", loadVoices);
+    };
+  }, []);
 
   useEffect(() => {
     if (!match.conversation_id || !match.access_token) return;
@@ -972,6 +1011,27 @@ function ChatPanel({
     }
   };
 
+  const speakGuideMessage = (message: Message) => {
+    if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
+    if (speakingMessageId === message.id) {
+      window.speechSynthesis.cancel();
+      setSpeakingMessageId(null);
+      return;
+    }
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(message.content);
+    utterance.lang = "zh-CN";
+    utterance.rate = 0.86;
+    utterance.pitch = 1.18;
+    utterance.volume = 0.92;
+    const voice = guideSpeechVoice();
+    if (voice) utterance.voice = voice;
+    utterance.onend = () => setSpeakingMessageId((current) => current === message.id ? null : current);
+    utterance.onerror = () => setSpeakingMessageId((current) => current === message.id ? null : current);
+    setSpeakingMessageId(message.id);
+    window.speechSynthesis.speak(utterance);
+  };
+
   const score = Math.round((match.match_score || conversation?.match_score || 0) * 100);
   const guideEmotion = emotion?.primary_emotion || "复杂";
   const partnerIsGuide = Boolean(conversation?.partner_is_demo ?? match.partner_is_demo);
@@ -1018,7 +1078,21 @@ function ChatPanel({
                 )}
                 <div>
                   <div className="messageBubble">{message.content}</div>
-                  <time>{new Date(message.created_at).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })}</time>
+                  <div className="messageMeta">
+                    <time>{new Date(message.created_at).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })}</time>
+                    {guideMessage && (
+                      <button
+                        aria-pressed={speakingMessageId === message.id}
+                        className={`speechButton ${speakingMessageId === message.id ? "active" : ""}`}
+                        disabled={!speechSupported}
+                        onClick={() => speakGuideMessage(message)}
+                        title={speechSupported ? "用同频向导原创声线朗读" : "当前浏览器不支持朗读"}
+                        type="button"
+                      >
+                        <span>{speakingMessageId === message.id ? "停止" : "朗读"}</span>
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
             );

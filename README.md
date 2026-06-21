@@ -1,0 +1,191 @@
+# VibeChat
+
+> AI 驱动的匿名情绪社交应用：先理解此刻的情绪，再连接真正同频的人。
+
+VibeChat 是第三期灵治擂台赛作品。用户写下当前心情后，系统会分析主情绪、混合情绪、强度、正负向和关键词，并将这些字段真正用于匹配计算。匹配成功后，双方以系统生成的匿名身份进入实时聊天室。
+
+## 核心功能
+
+- 结构化情绪分析：标签、强度、正负向、唤醒度、关键词和温和解释。
+- 可解释同频匹配：分析结果直接进入加权匹配算法，展示匹配指数与理由。
+- 真实匿名聊天：WebSocket 双向消息、时间顺序、在线状态、匿名身份。
+- 未匹配兜底：等待后可连接明确标识的“同频向导”，便于单人体验和稳定演示。
+- 双标准接口：OpenAI Chat Completions 与 Anthropic Messages，通过环境变量切换。
+- 安全边界：识别高风险表达并展示求助提醒，不进行医疗诊断。
+- 完整交付：FastAPI + Next.js 前后端分离、Docker 配置和自动测试。
+
+## 技术架构
+
+```text
+Next.js 16 / React 19
+  ├─ 情绪输入与分析结果卡
+  ├─ 匹配等待与兜底
+  └─ WebSocket 匿名聊天室
+             │ REST + WebSocket
+FastAPI
+  ├─ Emotion Provider Adapter
+  │    ├─ OpenAI 标准接口
+  │    ├─ Anthropic 标准接口
+  │    └─ Demo 演示引擎
+  ├─ Emotion Match Queue
+  └─ Conversation / Message Store
+```
+
+比赛版本使用单实例内存队列与会话存储，换取最少外部依赖和稳定演示。生产扩展时可将 `Store` 替换为 PostgreSQL + Redis，而无需修改前端契约。
+
+## 目录结构
+
+```text
+VibeChat/
+├─ backend/
+│  ├─ app/
+│  │  ├─ config.py       # 环境配置
+│  │  ├─ llm.py          # OpenAI / Anthropic / Demo Provider
+│  │  ├─ models.py       # 统一 Pydantic Schema
+│  │  ├─ store.py        # 匹配、会话与 WebSocket 状态
+│  │  └─ main.py         # FastAPI 路由
+│  └─ tests/             # 匹配和双用户聊天测试
+├─ frontend/
+│  └─ app/               # Next.js 单页完整体验
+├─ docker-compose.yml
+└─ SUBMISSION.md         # 提交文案与录屏脚本
+```
+
+## 本地启动
+
+### 1. 启动后端
+
+```powershell
+cd backend
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+Copy-Item .env.example .env
+uvicorn app.main:app --reload --port 8000
+```
+
+默认 `LLM_PROVIDER=demo`，无需密钥即可体验完整流程。API 文档：`http://localhost:8000/docs`。
+
+### 2. 启动前端
+
+```powershell
+cd frontend
+corepack enable
+pnpm install
+Copy-Item .env.example .env.local
+pnpm dev
+```
+
+访问 `http://localhost:3000`。打开两个普通/无痕窗口并输入相近情绪，即可验证真实双用户匹配和聊天。
+
+### 3. 运行测试与构建
+
+```powershell
+cd backend
+.\.venv\Scripts\python.exe -m pytest -q
+
+cd ..\frontend
+pnpm build
+```
+
+也可使用 Docker：
+
+```bash
+docker compose up --build
+```
+
+## LLM API 配置
+
+所有密钥只配置在后端，禁止放入 `NEXT_PUBLIC_*` 变量或提交到 Git。
+
+### OpenAI 标准接口
+
+后端调用 `{OPENAI_BASE_URL}/chat/completions`，使用 Bearer Token 和标准 `messages` 请求体。
+
+```dotenv
+LLM_PROVIDER=openai
+OPENAI_API_KEY=your-key
+OPENAI_BASE_URL=https://api.openai.com/v1
+OPENAI_MODEL=gpt-4.1-mini
+```
+
+也可将 `OPENAI_BASE_URL` 替换为兼容 OpenAI Chat Completions 的服务根地址。
+
+### Anthropic 标准接口
+
+后端调用 `{ANTHROPIC_BASE_URL}/messages`，使用 `x-api-key` 和 `anthropic-version` 请求头。
+
+```dotenv
+LLM_PROVIDER=anthropic
+ANTHROPIC_API_KEY=your-key
+ANTHROPIC_BASE_URL=https://api.anthropic.com/v1
+ANTHROPIC_MODEL=claude-sonnet-4-20250514
+```
+
+修改配置后重启后端。`GET /health` 会返回当前 Provider 名称，但不会泄露模型密钥。
+
+### DeepSeek 同时验证两种标准
+
+DeepSeek 同时提供 OpenAI 与 Anthropic 格式。本项目已使用同一 DeepSeek Key 对两种接口进行真实调用验证：
+
+```dotenv
+OPENAI_API_KEY=your-deepseek-key
+OPENAI_BASE_URL=https://api.deepseek.com
+OPENAI_MODEL=deepseek-v4-pro
+
+ANTHROPIC_API_KEY=your-deepseek-key
+ANTHROPIC_BASE_URL=https://api.deepseek.com/anthropic
+ANTHROPIC_MODEL=deepseek-v4-pro
+```
+
+这两条调用链分别经过独立的请求格式、认证请求头和响应解析逻辑，最终统一为 `EmotionResult`。
+
+## 匹配算法
+
+匹配分数由四部分组成：
+
+- 主/次情绪重合：55%。
+- 情绪强度接近：25%。
+- 正负向接近：12%。
+- 唤醒度接近：8%。
+
+同主情绪获得最高标签分；不同主情绪只有在混合情绪重叠时获得部分分数。默认阈值为 `0.56`。这确保 AI 分析不是装饰性标签，而是实际改变匹配结果。
+
+## 主要 API
+
+| 方法 | 路径 | 用途 |
+|---|---|---|
+| `GET` | `/health` | 健康检查与 Provider 状态 |
+| `POST` | `/api/emotions/analyze` | 情绪分析 |
+| `POST` | `/api/matches/join` | 加入匹配队列 |
+| `GET` | `/api/matches/{ticket_id}` | 查询匹配状态 |
+| `POST` | `/api/matches/{ticket_id}/demo` | 连接演示伙伴 |
+| `GET` | `/api/conversations/{id}` | 获取会话与消息 |
+| `WS` | `/ws/conversations/{id}` | 实时收发消息 |
+
+匿名会话凭证由后端生成，聊天接口不会暴露真实身份。比赛版本的匿名机制适用于临时会话，不等同于端到端加密。
+
+## 公网部署
+
+1. 将 `backend/` 部署到支持持续运行和 WebSocket 的容器服务，保持单实例。
+2. 配置后端 Provider 密钥、模型、`CORS_ORIGINS=https://前端域名`。
+3. 将 `frontend/` 部署到 Next.js 托管服务，并在构建阶段设置：
+
+```dotenv
+NEXT_PUBLIC_API_URL=https://后端域名
+NEXT_PUBLIC_WS_URL=wss://后端域名
+```
+
+4. 依次检查 `/health`、情绪分析、两个无痕窗口匹配、双向消息和刷新后的页面状态。
+
+## 稳定演示建议
+
+- 正式演示前保留两个无痕窗口，分别作为用户 A/B。
+- 先展示相近情绪得到高分，再说明不同情绪不会立即匹配。
+- 外部 LLM 异常时界面会显示明确错误；可切换 `demo` 完成产品流程演示。
+- 单人体验等待 8 秒后可连接“同频向导”，不会卡在空队列。
+- 录屏与截图中不得出现 API Key 或部署平台 Secret。
+
+## 产品介绍（100 字以内）
+
+VibeChat 是一款 AI 驱动的匿名情绪社交应用。它理解用户此刻的情绪类型、强度与倾向，据此寻找真正“同频”的陌生人，并生成自然的匿名对话空间，让每次连接从被理解开始。

@@ -1,0 +1,2 @@
+"""VibeChat backend package."""
+

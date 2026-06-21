@@ -274,11 +274,28 @@ GUIDE_SYSTEM_PROMPT = """你是 VibeChat 的“同频向导”，不是冷冰冰
 """
 
 
+def _finish_companion_reply(text: str) -> str:
+    if not text:
+        return text
+    if re.search(r"[。！？!?…~～]$", text):
+        return text
+    sentence_endings = [match.end() for match in re.finditer(r"[。！？!?…~～]", text)]
+    if sentence_endings and sentence_endings[-1] >= 24:
+        return text[: sentence_endings[-1]]
+    trimmed = re.sub(r"[，、；：:,.\\s]+$", "", text)
+    if len(trimmed) >= 18:
+        return f"{trimmed}。"
+    return text
+
+
 def _clean_companion_reply(text: str) -> str:
     cleaned = re.sub(r"^```(?:text)?\s*", "", text.strip(), flags=re.IGNORECASE)
     cleaned = re.sub(r"\s*```$", "", cleaned).strip()
     cleaned = cleaned.strip("\"“”")
-    return cleaned[:300]
+    if len(cleaned) > 260:
+        sentence_endings = [match.end() for match in re.finditer(r"[。！？!?…~～]", cleaned[:260])]
+        cleaned = cleaned[: sentence_endings[-1]] if sentence_endings else cleaned[:260]
+    return _finish_companion_reply(cleaned)
 
 
 def build_demo_companion_reply(user_message: str) -> str:
@@ -335,7 +352,7 @@ async def generate_companion_reply(
                     json={
                         "model": settings.openai_model,
                         "temperature": 0.75,
-                        "max_tokens": 220,
+                        "max_tokens": 360,
                         "messages": messages,
                     },
                 )
@@ -353,7 +370,7 @@ async def generate_companion_reply(
                     },
                     json={
                         "model": settings.anthropic_model,
-                        "max_tokens": 220,
+                        "max_tokens": 360,
                         "temperature": 0.75,
                         "system": GUIDE_SYSTEM_PROMPT,
                         "messages": anthropic_messages,

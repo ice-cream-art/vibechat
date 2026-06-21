@@ -1,7 +1,7 @@
 import asyncio
 
 from app.config import Settings
-from app.llm import AnthropicProvider, DemoProvider, OpenAIProvider
+from app.llm import AnthropicProvider, DemoProvider, OpenAIProvider, _clean_companion_reply
 from app.models import EmotionResult
 from app.store import Store, emotion_score
 
@@ -62,3 +62,10 @@ def test_provider_adapters_share_one_schema() -> None:
     assert openai.parse_result(raw).provider == "openai"
     assert anthropic.parse_result(f"```json\n{raw}\n```").provider == "anthropic"
 
+
+def test_companion_reply_cleanup_does_not_leave_half_sentence() -> None:
+    reply = _clean_companion_reply(
+        "哈哈，这个开场自带 BGM 啊~ 我是 VibeChat 的同频向导，不是真人用户，但能接住你的幽默。"
+        "练习两年半一定攒了不少经历，今天是想随便聊聊，还是有什么"
+    )
+    assert reply.endswith(("。", "？", "！", "?", "!", "…", "~", "～"))

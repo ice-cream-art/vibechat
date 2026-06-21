@@ -5,7 +5,7 @@ from fastapi import FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnec
 from fastapi.middleware.cors import CORSMiddleware
 
 from .config import get_settings
-from .llm import LLMProviderError, get_provider
+from .llm import LLMProviderError, generate_companion_reply, get_provider
 from .models import (
     ConversationResponse,
     EmotionRequest,
@@ -191,12 +191,12 @@ async def conversation_socket(websocket: WebSocket, conversation_id: str, token:
 async def send_demo_reply(conversation, user_token: str, content: str) -> None:
     await asyncio.sleep(0.8)
     demo_token = next(key for key in conversation.demo_tokens if key != user_token)
-    if any(word in content for word in ["你好", "嗨", "在吗"]):
-        reply = "我在。看到我们此刻的情绪很同频，你愿意多说一点发生了什么吗？"
-    elif "比赛" in content or "来不及" in content:
-        reply = "时间压力确实会让人一下子绷紧。先抓住最重要的一件事，也许会轻一点。"
-    elif len(content) <= 6:
-        reply = "嗯，我听见了。这里不用急着组织得很完整，想到哪里就说到哪里。"
-    else:
-        reply = "谢谢你把这些说出来。被这种情绪拉扯着一定不轻松，我会认真听。"
+    recent_messages = [
+        {
+            "role": "assistant" if message.sender_token in conversation.demo_tokens else "user",
+            "content": message.content,
+        }
+        for message in conversation.messages[-9:-1]
+    ]
+    reply = await generate_companion_reply(settings, content, recent_messages)
     await store.add_message(conversation, demo_token, reply)

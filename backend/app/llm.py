@@ -260,3 +260,106 @@ def get_provider(settings: Settings) -> EmotionProvider:
     if provider == "demo":
         return DemoProvider()
     raise LLMProviderError(f"不支持的 LLM_PROVIDER：{settings.llm_provider}")
+
+
+GUIDE_SYSTEM_PROMPT = """你是 VibeChat 的“同频向导”，不是冷冰冰的客服。
+请直接回应用户最后一句话，像一个温和、真诚、会接话的匿名陪聊者。
+
+要求：
+- 必须回答用户的问题，不要只说“我听见了”。
+- 可以承认自己是同频向导：你是一个匿名情绪陪伴向导，不是真人用户。
+- 先接住情绪，再给一个很小、可执行的回应或追问。
+- 中文回复，40 到 140 字；自然、有变化，不要模板化。
+- 不诊断疾病，不承诺治疗；出现自伤风险时，温和建议联系身边可信的人或当地紧急帮助。
+"""
+
+
+def _clean_companion_reply(text: str) -> str:
+    cleaned = re.sub(r"^```(?:text)?\s*", "", text.strip(), flags=re.IGNORECASE)
+    cleaned = re.sub(r"\s*```$", "", cleaned).strip()
+    cleaned = cleaned.strip("\"“”")
+    return cleaned[:300] or "我在。你刚才这句我接住了，我们可以慢慢说，不用一下子整理得很完整。"
+
+
+def build_demo_companion_reply(user_message: str) -> str:
+    text = user_message.strip()
+    lower = text.lower()
+    asks_identity = any(word in text for word in ["你是谁", "你是人吗", "机器人", "AI", "ai", "向导"])
+    asks_understanding = any(word in text for word in ["知道我说什么", "听懂", "懂吗", "什么意思", "你知道"])
+    asks_advice = any(word in text for word in ["怎么办", "咋办", "建议", "怎么做", "如何"])
+    tired = any(word in text for word in ["累", "疲惫", "困", "撑不住", "熬夜"])
+    anxious = any(word in text for word in ["焦虑", "紧张", "压力", "来不及", "害怕", "慌"])
+    sad = any(word in text for word in ["难过", "委屈", "想哭", "失落", "孤独", "没人"])
+    angry = any(word in text for word in ["烦", "生气", "讨厌", "不公平", "气"])
+    concern = any(word in text for word in ["自杀", "不想活", "结束生命", "伤害自己", "轻生"])
+
+    if concern:
+        return "这句我会很认真对待。先别一个人硬扛，好吗？请立刻联系身边可信的人；如果有马上伤害自己的危险，请拨打当地紧急电话。"
+    if asks_identity:
+        return "我是同频向导，一个匿名的情绪陪伴助手，不是真人匹配对象。我的任务是接住你现在的话，尽量顺着你的问题认真回应。"
+    if asks_understanding:
+        return "我知道你是在问：我有没有真的接住你的意思，而不是套模板。我会按你每一句来回；如果我理解偏了，你直接纠正我。"
+    if asks_advice:
+        return "可以。先别急着解决全部问题，我们只抓一个最小动作：把最困住你的那件事说成一句话，我陪你一起拆小一点。"
+    if tired:
+        return "听起来你已经耗了不少电量。现在不必逼自己振作，先把最累的那一块放到桌面上：是身体累，还是心里一直绷着？"
+    if anxious:
+        return "这种慌感很像脑子同时开了太多窗口。我们先只看眼前一分钟：最让你担心的，是时间不够、结果不好，还是没人理解？"
+    if sad:
+        return "这听起来不只是普通低落，更像是有些东西憋了很久。你可以不用讲得漂亮，先说最刺痛你的那一句就行。"
+    if angry:
+        return "这股烦和气我能感觉到，像是边界被碰到了。先不用压下去：让你最不舒服的是对方的态度，还是这件事本身不公平？"
+    if len(text) <= 6:
+        return "这句很短，但我不会把它当成没内容。你可以从一个词开始：现在更像是烦、累、慌，还是有点说不上来？"
+    return f"我接住了：{text[:36]}{'…' if len(text) > 36 else ''} 这里面好像有个很在意的点。你愿意先说说，最卡住你的是哪一部分吗？"
+
+
+async def generate_companion_reply(
+    settings: Settings,
+    user_message: str,
+    recent_messages: list[dict[str, str]] | None = None,
+) -> str:
+    provider = settings.llm_provider.lower().strip()
+    recent_messages = recent_messages or []
+    try:
+        if provider == "openai" and settings.openai_api_key:
+            messages = [{"role": "system", "content": GUIDE_SYSTEM_PROMPT}]
+            messages.extend(recent_messages[-10:])
+            messages.append({"role": "user", "content": user_message})
+            async with httpx.AsyncClient(timeout=25) as client:
+                response = await client.post(
+                    f"{settings.openai_base_url.rstrip('/')}/chat/completions",
+                    headers={"Authorization": f"Bearer {settings.openai_api_key}"},
+                    json={
+                        "model": settings.openai_model,
+                        "temperature": 0.75,
+                        "max_tokens": 220,
+                        "messages": messages,
+                    },
+                )
+                response.raise_for_status()
+                return _clean_companion_reply(response.json()["choices"][0]["message"]["content"])
+        if provider == "anthropic" and settings.anthropic_api_key:
+            anthropic_messages = recent_messages[-10:] + [{"role": "user", "content": user_message}]
+            async with httpx.AsyncClient(timeout=25) as client:
+                response = await client.post(
+                    f"{settings.anthropic_base_url.rstrip('/')}/messages",
+                    headers={
+                        "x-api-key": settings.anthropic_api_key,
+                        "anthropic-version": "2023-06-01",
+                    },
+                    json={
+                        "model": settings.anthropic_model,
+                        "max_tokens": 220,
+                        "temperature": 0.75,
+                        "system": GUIDE_SYSTEM_PROMPT,
+                        "messages": anthropic_messages,
+                    },
+                )
+                response.raise_for_status()
+                content = response.json()["content"]
+                raw = next(item["text"] for item in content if item.get("type") == "text")
+                return _clean_companion_reply(raw)
+    except (httpx.HTTPError, KeyError, IndexError, StopIteration, TypeError, ValueError):
+        pass
+    return build_demo_companion_reply(user_message)

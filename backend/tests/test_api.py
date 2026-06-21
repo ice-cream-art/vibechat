@@ -86,3 +86,42 @@ def test_rest_message_fallback() -> None:
     )
     assert conversation.status_code == 200
     assert conversation.json()["messages"][0]["content"] == "你好，想聊聊今天的心情。"
+
+
+def test_demo_guide_replies_to_user_question_without_repeating_template() -> None:
+    reset_store()
+    ticket = join("今天有点累，想安静聊一会儿")
+    demo = client.post(
+        f"/api/matches/{ticket['ticket_id']}/demo",
+        params={"access_token": ticket["access_token"]},
+    )
+    assert demo.status_code == 200
+    conversation_id = demo.json()["conversation_id"]
+
+    first = client.post(
+        f"/api/conversations/{conversation_id}/messages",
+        params={"access_token": ticket["access_token"]},
+        json={"content": "你是谁"},
+    )
+    assert first.status_code == 200
+    second = client.post(
+        f"/api/conversations/{conversation_id}/messages",
+        params={"access_token": ticket["access_token"]},
+        json={"content": "你知道我说什么吗"},
+    )
+    assert second.status_code == 200
+
+    conversation = client.get(
+        f"/api/conversations/{conversation_id}",
+        params={"access_token": ticket["access_token"]},
+    )
+    assert conversation.status_code == 200
+    guide_replies = [
+        message["content"]
+        for message in conversation.json()["messages"]
+        if message["sender_alias"].startswith("同频向导")
+    ]
+    assert len(guide_replies) == 2
+    assert "同频向导" in guide_replies[0]
+    assert "模板" in guide_replies[1] or "接住" in guide_replies[1]
+    assert guide_replies[0] != guide_replies[1]

@@ -44,6 +44,7 @@ type Message = {
   sender_alias: string;
   content: string;
   created_at: string;
+  pending?: boolean;
 };
 
 type Conversation = {
@@ -138,7 +139,10 @@ function apiErrorMessage(payload: unknown, fallback: string) {
 }
 
 function sameMessageList(current: Message[], next: Message[]) {
-  return current.length === next.length && current.every((message, index) => message.id === next[index]?.id);
+  return current.length === next.length && current.every((message, index) => (
+    message.id === next[index]?.id &&
+    Boolean(message.pending) === Boolean(next[index]?.pending)
+  ));
 }
 
 function sameConversation(current: Conversation | null, next: Conversation) {
@@ -158,6 +162,28 @@ function hasNewIncomingMessage(current: Message[], next: Message[], selfAlias: s
     message.sender_alias !== selfAlias &&
     !current.some((item) => item.id === message.id)
   ));
+}
+
+function isMatchingOptimisticMessage(pending: Message, confirmed: Message) {
+  return Boolean(pending.pending) &&
+    pending.sender_alias === confirmed.sender_alias &&
+    pending.content === confirmed.content;
+}
+
+function mergeConfirmedMessages(current: Message[], confirmed: Message[]) {
+  const pending = current.filter((message) => (
+    message.pending &&
+    !confirmed.some((item) => isMatchingOptimisticMessage(message, item))
+  ));
+  return [...confirmed, ...pending];
+}
+
+function mergeIncomingMessage(current: Message[], incoming: Message) {
+  if (current.some((message) => message.id === incoming.id)) return current;
+  return [
+    ...current.filter((message) => !isMatchingOptimisticMessage(message, incoming)),
+    incoming,
+  ];
 }
 
 function atmosphereForMood(mood: string): Exclude<AtmosphereMode, "auto" | "off"> {
@@ -930,8 +956,9 @@ function ChatPanel({
             receiveSoundRef.current();
           }
           receivedInitialMessagesRef.current = true;
-          messagesRef.current = payload.messages;
-          setMessages((current) => sameMessageList(current, payload.messages) ? current : payload.messages);
+          const mergedMessages = mergeConfirmedMessages(messagesRef.current, payload.messages);
+          messagesRef.current = mergedMessages;
+          setMessages((current) => sameMessageList(current, mergedMessages) ? current : mergedMessages);
         }
       })
       .catch((reason) => !disposed && setError(reason.message));
@@ -951,9 +978,9 @@ function ChatPanel({
         shouldStickToBottomRef.current = shouldStickToBottomRef.current || isNearBottom();
         if (!messagesRef.current.some((item) => item.id === incoming.id)) {
           if (incoming.sender_alias !== selfAlias) receiveSoundRef.current();
-          messagesRef.current = [...messagesRef.current, incoming];
+          messagesRef.current = mergeIncomingMessage(messagesRef.current, incoming);
         }
-        setMessages((current) => current.some((item) => item.id === incoming.id) ? current : [...current, incoming]);
+        setMessages((current) => mergeIncomingMessage(current, incoming));
       }
     };
     return () => {
@@ -978,13 +1005,18 @@ function ChatPanel({
     event.preventDefault();
     const content = draft.trim();
     if (!content || !match.conversation_id || !match.access_token || connection !== "online") return;
+    const optimisticMessage: Message = {
+      id: `local-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      sender_alias: selfAlias,
+      content,
+      created_at: new Date().toISOString(),
+      pending: true,
+    };
     setDraft("");
     shouldStickToBottomRef.current = true;
-    if (socketRef.current?.readyState === WebSocket.OPEN) {
-      socketRef.current.send(JSON.stringify({ type: "message", content }));
-      onSendSound();
-      return;
-    }
+    messagesRef.current = [...messagesRef.current, optimisticMessage];
+    setMessages((current) => [...current, optimisticMessage]);
+    onSendSound();
     try {
       const response = await fetch(
         `${CHAT_API_URL}/api/conversations/${match.conversation_id}/messages?access_token=${encodeURIComponent(match.access_token)}`,
@@ -997,11 +1029,12 @@ function ChatPanel({
       const payload = await response.json();
       if (!response.ok) throw new Error(apiErrorMessage(payload, "消息发送失败"));
       shouldStickToBottomRef.current = true;
-      onSendSound();
-      messagesRef.current = messagesRef.current.some((item) => item.id === payload.id) ? messagesRef.current : [...messagesRef.current, payload];
-      setMessages((current) => current.some((item) => item.id === payload.id) ? current : [...current, payload]);
+      messagesRef.current = mergeIncomingMessage(messagesRef.current, payload);
+      setMessages((current) => mergeIncomingMessage(current, payload));
     } catch (reason) {
       setDraft(content);
+      messagesRef.current = messagesRef.current.filter((message) => message.id !== optimisticMessage.id);
+      setMessages((current) => current.filter((message) => message.id !== optimisticMessage.id));
       setError(reason instanceof Error ? reason.message : "消息发送失败");
     }
   };
@@ -1063,7 +1096,7 @@ function ChatPanel({
             const mine = message.sender_alias === selfAlias;
             const guideMessage = partnerIsGuide && !mine;
             return (
-              <div className={`messageRow ${mine ? "mine" : "theirs"}`} key={message.id}>
+              <div className={`messageRow ${mine ? "mine" : "theirs"} ${message.pending ? "pending" : ""}`} key={message.id}>
                 {!mine && (
                   guideMessage ? (
                     <GuideAvatar emotion={guideEmotion} size="sm" />
@@ -1074,7 +1107,7 @@ function ChatPanel({
                 <div>
                   <div className="messageBubble">{message.content}</div>
                   <div className="messageMeta">
-                    <time>{new Date(message.created_at).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })}</time>
+                    <time>{message.pending ? "发送中" : new Date(message.created_at).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })}</time>
                     {guideMessage && (
                       <button
                         aria-pressed={speakingMessageId === message.id}

@@ -568,6 +568,8 @@ textarea::placeholder { color: #aab5bd; }
 .systemMessage small { color: #a5b0b8; }
 .messageRow { display: flex; gap: 10px; margin: 0 0 20px; align-items: flex-end; }
 .messageRow.mine { justify-content: flex-end; }
+.messageRow.pending .messageBubble { opacity: .72; }
+.messageRow.pending time { color: #7bb8bc; }
 .messageRow > div { min-width: 0; max-width: min(72%, 620px); }
 .messageBubble {
   --bubble-pos-a: 12px 18px;

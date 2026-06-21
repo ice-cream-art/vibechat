@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 
 type Phase = "input" | "result" | "matching" | "chat";
 
@@ -78,6 +78,18 @@ const examples = [
   "比赛快开始了，我既期待又有点紧张",
   "忙完一天，突然很想找个人安静聊聊",
   "今天有件小事让我开心了很久",
+];
+
+const topicCards = [
+  { title: "考前焦虑互助", meta: "128 人正在同频" },
+  { title: "深夜安静聊天", meta: "76 条温柔回复" },
+  { title: "今日小确幸", meta: "42 个开心瞬间" },
+];
+
+const guideTips = [
+  "今天最想被谁理解？",
+  "这件事里最卡住你的点是什么？",
+  "如果只说一句真话，会是什么？",
 ];
 
 const emotionMeta: Record<string, { glyph: string; color: string; caption: string }> = {
@@ -241,7 +253,19 @@ export default function Home() {
           <span className="brandMark"><span /></span>
           <span>VibeChat</span>
         </button>
+        <nav className="siteNav" aria-label="主导航">
+          <button type="button" className="active">首页</button>
+          <button type="button">同频广场</button>
+          <button type="button">AI向导</button>
+          <button type="button">更多</button>
+        </nav>
+        <div className="searchBox">
+          <span>搜索</span>
+          <b>⌕</b>
+        </div>
         <div className="privacyPill"><span className="statusDot" />匿名 · 安全 · 此刻</div>
+        <button className="registerButton" type="button">注册</button>
+        <button className="loginButton" type="button">登录</button>
       </header>
 
       <section className={`stage phase-${phase}`}>
@@ -312,11 +336,19 @@ function InputPanel({
           <span><b>02</b> 同频匿名匹配</span>
           <span><b>03</b> 自然开始对话</span>
         </div>
+        <div className="topicGrid">
+          {topicCards.map((topic) => (
+            <article key={topic.title}>
+              <strong>{topic.title}</strong>
+              <span>{topic.meta}</span>
+            </article>
+          ))}
+        </div>
       </div>
 
       <form className="inputCard" onSubmit={analyze}>
         <div className="cardTopline">
-          <span>此刻，你感觉如何？</span>
+          <span>写下此刻心情</span>
           <span className="charCount">{text.length}/500</span>
         </div>
         <label className="srOnly" htmlFor="feeling">写下此刻的心情</label>
@@ -331,7 +363,7 @@ function InputPanel({
         <div className="promptIdeas">
           <span>试着写下</span>
           {examples.map((example, index) => (
-            <button type="button" key={example} onClick={() => setText(example)}>{index + 1}</button>
+            <button type="button" key={example} onClick={() => setText(example)}>{example}</button>
           ))}
         </div>
         {error && <div className="errorMessage" role="alert">{error}</div>}
@@ -363,7 +395,7 @@ function ResultPanel({
     <div className="resultLayout" style={{ "--emotion-color": meta.color } as React.CSSProperties}>
       <div className="resultIntro">
         <button className="textButton" onClick={onBack}>← 重新说说</button>
-        <div className="eyebrow"><span /> EMOTION READOUT</div>
+        <div className="eyebrow"><span /> AI 情绪分析</div>
         <h2>你的情绪<br />已经被听见</h2>
         <p>这不是定义，只是对你此刻的一次温柔解读。</p>
       </div>
@@ -466,6 +498,11 @@ function ChatPanel({ match, onLeave }: { match: MatchStatus; onLeave: () => void
   const listRef = useRef<HTMLDivElement | null>(null);
   const endRef = useRef<HTMLDivElement | null>(null);
   const shouldStickToBottomRef = useRef(true);
+  const isNearBottom = useCallback(() => {
+    const list = listRef.current;
+    if (!list) return true;
+    return list.scrollHeight - list.scrollTop - list.clientHeight < 120;
+  }, []);
 
   useEffect(() => {
     if (!match.conversation_id || !match.access_token) return;
@@ -496,6 +533,7 @@ function ChatPanel({ match, onLeave }: { match: MatchStatus; onLeave: () => void
     socket.onmessage = (event) => {
       const payload = JSON.parse(event.data);
       if (payload.type === "message") {
+        shouldStickToBottomRef.current = shouldStickToBottomRef.current || isNearBottom();
         setMessages((current) => current.some((item) => item.id === payload.message.id) ? current : [...current, payload.message]);
       }
     };
@@ -504,7 +542,7 @@ function ChatPanel({ match, onLeave }: { match: MatchStatus; onLeave: () => void
       window.clearInterval(poller);
       socket.close();
     };
-  }, [match.access_token, match.conversation_id]);
+  }, [isNearBottom, match.access_token, match.conversation_id]);
 
   useEffect(() => {
     if (!shouldStickToBottomRef.current) return;
@@ -514,8 +552,8 @@ function ChatPanel({ match, onLeave }: { match: MatchStatus; onLeave: () => void
     } else {
       endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
     }
-    shouldStickToBottomRef.current = messages.length === 0;
-  }, [messages]);
+    shouldStickToBottomRef.current = isNearBottom();
+  }, [isNearBottom, messages]);
 
   const send = async (event: FormEvent) => {
     event.preventDefault();
@@ -600,6 +638,21 @@ function ChatPanel({ match, onLeave }: { match: MatchStatus; onLeave: () => void
           <button type="submit" disabled={!draft.trim() || connection !== "online"} aria-label="发送消息">↑</button>
         </form>
       </section>
+      <aside className="chatGuide">
+        <div className="guideBlock">
+          <span className="tinyLabel">今日同频话题</span>
+          {topicCards.map((topic, index) => (
+            <div className="topicItem" key={topic.title}>
+              <b>{index + 1}</b>
+              <div><strong>{topic.title}</strong><span>{topic.meta}</span></div>
+            </div>
+          ))}
+        </div>
+        <div className="guideBlock">
+          <span className="tinyLabel">破冰提示</span>
+          {guideTips.map((tip) => <button type="button" key={tip}>{tip}</button>)}
+        </div>
+      </aside>
     </div>
   );
 }

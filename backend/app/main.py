@@ -28,6 +28,7 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origin_list,
+    allow_origin_regex=settings.cors_origin_regex or None,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -161,4 +162,3 @@ async def send_demo_reply(conversation, user_token: str, content: str) -> None:
     else:
         reply = "谢谢你把这些说出来。被这种情绪拉扯着一定不轻松，我会认真听。"
     await store.add_message(conversation, demo_token, reply)
-

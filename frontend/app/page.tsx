@@ -105,6 +105,19 @@ const emotionMeta: Record<string, { glyph: string; color: string; caption: strin
   复杂: { glyph: "∞", color: "#d7aefb", caption: "不止一种感受" },
 };
 
+const guideAvatarMeta: Record<string, { tone: string; face: string; badge: string }> = {
+  开心: { tone: "happy", face: "⌣", badge: "✦" },
+  兴奋: { tone: "excited", face: "ᗜ", badge: "↗" },
+  期待: { tone: "hopeful", face: "ᵕ", badge: "◌" },
+  平静: { tone: "calm", face: "–", badge: "≈" },
+  焦虑: { tone: "anxious", face: "﹏", badge: "⌁" },
+  难过: { tone: "sad", face: "︵", badge: "◒" },
+  孤独: { tone: "lonely", face: "·", badge: "·" },
+  愤怒: { tone: "angry", face: "へ", badge: "!" },
+  疲惫: { tone: "tired", face: "＿", badge: "—" },
+  复杂: { tone: "mixed", face: "⌁", badge: "∞" },
+};
+
 function apiErrorMessage(payload: unknown, fallback: string) {
   if (payload && typeof payload === "object" && "detail" in payload) {
     const detail = (payload as { detail?: unknown }).detail;
@@ -126,6 +139,28 @@ function sameConversation(current: Conversation | null, next: Conversation) {
     current.match_score === next.match_score &&
     current.match_reason === next.match_reason &&
     current.partner_is_demo === next.partner_is_demo
+  );
+}
+
+function GuideAvatar({
+  emotion,
+  size = "md",
+}: {
+  emotion?: string;
+  size?: "sm" | "md" | "lg";
+}) {
+  const meta = guideAvatarMeta[emotion || ""] || guideAvatarMeta["复杂"];
+  return (
+    <span className={`guideAvatar guideAvatar-${meta.tone} guideAvatar-${size}`} aria-label={`${emotion || "复杂"}同频向导头像`}>
+      <span className="guideAvatarHalo" />
+      <span className="guideAvatarHead">
+        <span className="guideAvatarFringe" />
+        <span className="guideAvatarEye guideAvatarEyeLeft" />
+        <span className="guideAvatarEye guideAvatarEyeRight" />
+        <span className="guideAvatarMouth">{meta.face}</span>
+      </span>
+      <span className="guideAvatarBadge">{meta.badge}</span>
+    </span>
   );
 }
 
@@ -299,7 +334,7 @@ export default function Home() {
           />
         )}
         {phase === "chat" && ticket && match?.conversation_id && match.access_token && (
-          <ChatPanel match={match} onLeave={reset} />
+          <ChatPanel match={match} emotion={emotion} onLeave={reset} />
         )}
       </section>
 
@@ -488,7 +523,15 @@ function MatchingPanel({
   );
 }
 
-function ChatPanel({ match, onLeave }: { match: MatchStatus; onLeave: () => void }) {
+function ChatPanel({
+  match,
+  emotion,
+  onLeave,
+}: {
+  match: MatchStatus;
+  emotion: EmotionResult | null;
+  onLeave: () => void;
+}) {
   const [conversation, setConversation] = useState<Conversation | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [draft, setDraft] = useState("");
@@ -586,6 +629,8 @@ function ChatPanel({ match, onLeave }: { match: MatchStatus; onLeave: () => void
 
   const score = Math.round((match.match_score || conversation?.match_score || 0) * 100);
   const selfAlias = conversation?.self_alias || match.alias || "我";
+  const guideEmotion = emotion?.primary_emotion || "复杂";
+  const partnerIsGuide = Boolean(conversation?.partner_is_demo ?? match.partner_is_demo);
   return (
     <div className="chatLayout">
       <aside className="chatAside">
@@ -603,7 +648,11 @@ function ChatPanel({ match, onLeave }: { match: MatchStatus; onLeave: () => void
       <section className="chatRoom">
         <header className="chatHeader">
           <div className="partnerIdentity">
-            <span className="avatar">{(match.partner_alias || "同").slice(0, 1)}</span>
+            {partnerIsGuide ? (
+              <GuideAvatar emotion={guideEmotion} size="lg" />
+            ) : (
+              <span className="avatar">{(match.partner_alias || "同").slice(0, 1)}</span>
+            )}
             <div><b>{match.partner_alias || "同频的人"}</b><span><i className={`connectionDot ${connection}`} />{(conversation?.partner_is_demo ?? match.partner_is_demo) ? "同频向导 · 自动回复" : connection === "online" ? "真人伙伴 · 等待回复" : connection === "connecting" ? "正在连接" : "连接已断开"}</span></div>
           </div>
           <span className="anonymousBadge">匿名会话</span>
@@ -612,9 +661,16 @@ function ChatPanel({ match, onLeave }: { match: MatchStatus; onLeave: () => void
           <div className="systemMessage"><span>✦</span> 你们因为相近的情绪频率来到这里<br /><small>不用急着表现，做此刻的自己就好</small></div>
           {messages.map((message) => {
             const mine = message.sender_alias === selfAlias;
+            const guideMessage = !mine && message.sender_alias.startsWith("同频向导");
             return (
               <div className={`messageRow ${mine ? "mine" : "theirs"}`} key={message.id}>
-                {!mine && <span className="avatar messageAvatar">{message.sender_alias.slice(0, 1)}</span>}
+                {!mine && (
+                  guideMessage ? (
+                    <GuideAvatar emotion={guideEmotion} size="sm" />
+                  ) : (
+                    <span className="avatar messageAvatar">{message.sender_alias.slice(0, 1)}</span>
+                  )
+                )}
                 <div>
                   <div className="messageBubble">{message.content}</div>
                   <time>{new Date(message.created_at).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })}</time>

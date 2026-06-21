@@ -20,7 +20,11 @@ from .store import Store
 
 
 settings = get_settings()
-store = Store(threshold=settings.match_threshold)
+store = Store(
+    threshold=settings.match_threshold,
+    redis_url=settings.redis_url,
+    redis_token=settings.redis_token,
+)
 
 app = FastAPI(
     title="VibeChat API",
@@ -39,7 +43,12 @@ app.add_middleware(
 
 @app.get("/health")
 async def health() -> dict[str, str]:
-    return {"status": "ok", "provider": settings.llm_provider, "time": datetime.now(timezone.utc).isoformat()}
+    return {
+        "status": "ok",
+        "provider": settings.llm_provider,
+        "storage": store.storage_name,
+        "time": datetime.now(timezone.utc).isoformat(),
+    }
 
 
 @app.post("/api/emotions/analyze", response_model=EmotionResult)
@@ -62,7 +71,7 @@ async def join_match(request: MatchJoinRequest) -> MatchJoinResponse:
     )
 
 
-def status_payload(ticket) -> MatchStatusResponse:
+async def status_payload(ticket) -> MatchStatusResponse:
     waited = int((datetime.now(timezone.utc) - ticket.created_at).total_seconds())
     if ticket.status != "matched" or not ticket.conversation_id:
         return MatchStatusResponse(
@@ -72,7 +81,15 @@ def status_payload(ticket) -> MatchStatusResponse:
             alias=ticket.alias,
             demo_available=waited >= 8,
         )
-    conversation = store.conversations[ticket.conversation_id]
+    conversation = await store.get_conversation(ticket.conversation_id, ticket.access_token)
+    if not conversation:
+        return MatchStatusResponse(
+            ticket_id=ticket.id,
+            status="waiting",
+            waited_seconds=waited,
+            alias=ticket.alias,
+            demo_available=waited >= 8,
+        )
     return MatchStatusResponse(
         ticket_id=ticket.id,
         status="matched",
@@ -88,34 +105,36 @@ def status_payload(ticket) -> MatchStatusResponse:
 
 @app.get("/api/matches/{ticket_id}", response_model=MatchStatusResponse)
 async def match_status(ticket_id: str, access_token: str = Query(min_length=12)) -> MatchStatusResponse:
-    ticket = store.get_ticket(ticket_id, access_token)
+    ticket = await store.get_ticket(ticket_id, access_token)
     if not ticket:
         raise HTTPException(status_code=404, detail="匹配凭证无效")
-    return status_payload(ticket)
+    return await status_payload(ticket)
 
 
 @app.post("/api/matches/{ticket_id}/demo", response_model=MatchStatusResponse)
 async def match_demo(ticket_id: str, access_token: str = Query(min_length=12)) -> MatchStatusResponse:
-    ticket = store.get_ticket(ticket_id, access_token)
+    ticket = await store.get_ticket(ticket_id, access_token)
     if not ticket:
         raise HTTPException(status_code=404, detail="匹配凭证无效")
     await store.match_demo(ticket)
-    return status_payload(ticket)
+    ticket = await store.get_ticket(ticket_id, access_token)
+    if not ticket:
+        raise HTTPException(status_code=404, detail="匹配凭证无效")
+    return await status_payload(ticket)
 
 
 @app.post("/api/matches/{ticket_id}/cancel", response_model=MatchStatusResponse)
 async def cancel_match(ticket_id: str, access_token: str = Query(min_length=12)) -> MatchStatusResponse:
-    ticket = store.get_ticket(ticket_id, access_token)
+    ticket = await store.get_ticket(ticket_id, access_token)
     if not ticket:
         raise HTTPException(status_code=404, detail="匹配凭证无效")
-    if ticket.status == "waiting":
-        ticket.status = "cancelled"
-    return status_payload(ticket)
+    ticket = await store.cancel_ticket(ticket)
+    return await status_payload(ticket)
 
 
 @app.get("/api/conversations/{conversation_id}", response_model=ConversationResponse)
 async def get_conversation(conversation_id: str, access_token: str = Query(min_length=12)) -> ConversationResponse:
-    conversation = store.get_conversation(conversation_id, access_token)
+    conversation = await store.get_conversation(conversation_id, access_token)
     if not conversation:
         raise HTTPException(status_code=404, detail="会话不存在或凭证无效")
     return ConversationResponse(
@@ -134,18 +153,18 @@ async def post_message(
     request: MessageCreateRequest,
     access_token: str = Query(min_length=12),
 ) -> MessageRecord:
-    conversation = store.get_conversation(conversation_id, access_token)
+    conversation = await store.get_conversation(conversation_id, access_token)
     if not conversation:
         raise HTTPException(status_code=404, detail="会话不存在或凭证无效")
     message = await store.add_message(conversation, access_token, request.content)
     if store.has_demo_partner(conversation, access_token):
-        asyncio.create_task(send_demo_reply(conversation, access_token, request.content))
+        await send_demo_reply(conversation, access_token, request.content)
     return message
 
 
 @app.websocket("/ws/conversations/{conversation_id}")
 async def conversation_socket(websocket: WebSocket, conversation_id: str, token: str = Query(min_length=12)) -> None:
-    conversation = store.get_conversation(conversation_id, token)
+    conversation = await store.get_conversation(conversation_id, token)
     if not conversation:
         await websocket.close(code=4404, reason="会话不存在或凭证无效")
         return

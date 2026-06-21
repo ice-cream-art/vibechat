@@ -1,6 +1,8 @@
+import asyncio
+
 from fastapi.testclient import TestClient
 
-from app.main import app, settings, store
+from app.main import app, send_demo_reply, settings, store
 
 
 client = TestClient(app)
@@ -125,3 +127,33 @@ def test_demo_guide_replies_to_user_question_without_repeating_template() -> Non
     assert "同频向导" in guide_replies[0]
     assert "模板" in guide_replies[1] or "接住" in guide_replies[1]
     assert guide_replies[0] != guide_replies[1]
+
+
+def test_demo_reply_skips_stale_user_message() -> None:
+    reset_store()
+    ticket = join("今天有点累，想安静聊一会儿")
+    demo = client.post(
+        f"/api/matches/{ticket['ticket_id']}/demo",
+        params={"access_token": ticket["access_token"]},
+    )
+    assert demo.status_code == 200
+    conversation_id = demo.json()["conversation_id"]
+
+    async def scenario() -> None:
+        conversation = await store.get_conversation(conversation_id, ticket["access_token"])
+        assert conversation is not None
+        first = await store.add_message(conversation, ticket["access_token"], "第一个问题")
+        task = asyncio.create_task(send_demo_reply(conversation, ticket["access_token"], first))
+        await asyncio.sleep(0.1)
+        await store.add_message(conversation, ticket["access_token"], "第二个问题")
+        await task
+
+        refreshed = await store.get_conversation(conversation_id, ticket["access_token"])
+        assert refreshed is not None
+        assert [
+            message
+            for message in refreshed.messages
+            if message.sender_alias.startswith("同频向导")
+        ] == []
+
+    asyncio.run(scenario())

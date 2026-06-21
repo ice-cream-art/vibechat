@@ -160,7 +160,13 @@ class Store:
                 "participants": conversation.participants,
                 "match_score": conversation.match_score,
                 "match_reason": conversation.match_reason,
-                "messages": [message.model_dump(mode="json") for message in conversation.messages],
+                "messages": [
+                    {
+                        **message.model_dump(mode="json"),
+                        "sender_token": message.sender_token,
+                    }
+                    for message in conversation.messages
+                ],
                 "demo_tokens": list(conversation.demo_tokens),
             },
             ensure_ascii=False,
@@ -174,7 +180,16 @@ class Store:
             participants=data["participants"],
             match_score=data["match_score"],
             match_reason=data["match_reason"],
-            messages=[MessageRecord(sender_token="", **item) for item in data.get("messages", [])],
+            messages=[
+                MessageRecord(
+                    id=item["id"],
+                    sender_alias=item["sender_alias"],
+                    sender_token=item.get("sender_token", ""),
+                    content=item["content"],
+                    created_at=item["created_at"],
+                )
+                for item in data.get("messages", [])
+            ],
             demo_tokens=set(data.get("demo_tokens", [])),
         )
 
@@ -336,6 +351,19 @@ class Store:
             else self.conversations.get(conversation_id)
         )
         return conversation if conversation and token in conversation.participants else None
+
+    async def latest_message_from(self, conversation_id: str, token: str) -> MessageRecord | None:
+        conversation = (
+            await self._load_conversation(conversation_id)
+            if self.redis_enabled
+            else self.conversations.get(conversation_id)
+        )
+        if not conversation:
+            return None
+        return next(
+            (message for message in reversed(conversation.messages) if message.sender_token == token),
+            None,
+        )
 
     def partner_alias(self, conversation: Conversation, token: str) -> str:
         return next(alias for key, alias in conversation.participants.items() if key != token)

@@ -93,6 +93,7 @@ def test_redis_store_shares_matches_and_messages_across_instances() -> None:
         refreshed = await first_instance.get_conversation(first_status.conversation_id or "", first.access_token)
         assert refreshed is not None
         assert refreshed.messages[0].content == "我们一起慢慢来。"
+        assert refreshed.messages[0].sender_token == second.access_token
 
     asyncio.run(scenario())
 

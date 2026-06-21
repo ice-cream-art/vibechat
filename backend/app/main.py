@@ -160,7 +160,7 @@ async def post_message(
         raise HTTPException(status_code=404, detail="会话不存在或凭证无效")
     message = await store.add_message(conversation, access_token, request.content)
     if store.has_demo_partner(conversation, access_token):
-        await send_demo_reply(conversation, access_token, request.content)
+        await send_demo_reply(conversation, access_token, message)
     return message
 
 
@@ -181,22 +181,31 @@ async def conversation_socket(websocket: WebSocket, conversation_id: str, token:
             if not content or len(content) > 1000:
                 await websocket.send_json({"type": "error", "message": "消息需为 1-1000 个字符"})
                 continue
-            await store.add_message(conversation, token, content)
+            message = await store.add_message(conversation, token, content)
             if store.has_demo_partner(conversation, token):
-                asyncio.create_task(send_demo_reply(conversation, token, content))
+                asyncio.create_task(send_demo_reply(conversation, token, message))
     except WebSocketDisconnect:
         store.disconnect(conversation_id, token)
 
 
-async def send_demo_reply(conversation, user_token: str, content: str) -> None:
+async def send_demo_reply(conversation, user_token: str, trigger_message: MessageRecord) -> None:
     await asyncio.sleep(0.8)
-    demo_token = next(key for key in conversation.demo_tokens if key != user_token)
+    latest_user_message = await store.latest_message_from(conversation.id, user_token)
+    if not latest_user_message or latest_user_message.id != trigger_message.id:
+        return
+    current_conversation = await store.get_conversation(conversation.id, user_token)
+    if not current_conversation:
+        return
+    demo_token = next(key for key in current_conversation.demo_tokens if key != user_token)
     recent_messages = [
         {
-            "role": "assistant" if message.sender_token in conversation.demo_tokens else "user",
+            "role": "assistant" if message.sender_token in current_conversation.demo_tokens else "user",
             "content": message.content,
         }
-        for message in conversation.messages[-9:-1]
+        for message in current_conversation.messages[-9:-1]
     ]
-    reply = await generate_companion_reply(settings, content, recent_messages)
-    await store.add_message(conversation, demo_token, reply)
+    reply = await generate_companion_reply(settings, trigger_message.content, recent_messages)
+    latest_user_message = await store.latest_message_from(conversation.id, user_token)
+    if not latest_user_message or latest_user_message.id != trigger_message.id:
+        return
+    await store.add_message(current_conversation, demo_token, reply)

@@ -2,7 +2,7 @@ import asyncio
 
 from fastapi.testclient import TestClient
 
-from app.main import app, send_demo_reply, settings, store
+from app.main import app, demo_reply_locks, send_demo_reply, settings, store
 
 
 client = TestClient(app)
@@ -13,6 +13,7 @@ def reset_store() -> None:
     store.tickets.clear()
     store.conversations.clear()
     store.connections.clear()
+    demo_reply_locks.clear()
 
 
 def analyze(text: str) -> dict:
@@ -100,18 +101,17 @@ def test_demo_guide_replies_to_user_question_without_repeating_template() -> Non
     assert demo.status_code == 200
     conversation_id = demo.json()["conversation_id"]
 
-    first = client.post(
-        f"/api/conversations/{conversation_id}/messages",
-        params={"access_token": ticket["access_token"]},
-        json={"content": "你是谁"},
-    )
-    assert first.status_code == 200
-    second = client.post(
-        f"/api/conversations/{conversation_id}/messages",
-        params={"access_token": ticket["access_token"]},
-        json={"content": "你知道我说什么吗"},
-    )
-    assert second.status_code == 200
+    async def scenario() -> None:
+        conversation = await store.get_conversation(conversation_id, ticket["access_token"])
+        assert conversation is not None
+        first = await store.add_message(conversation, ticket["access_token"], "你是谁")
+        first_reply = asyncio.create_task(send_demo_reply(conversation, ticket["access_token"], first))
+        await asyncio.sleep(0.1)
+        second = await store.add_message(conversation, ticket["access_token"], "你知道我说什么吗")
+        second_reply = asyncio.create_task(send_demo_reply(conversation, ticket["access_token"], second))
+        await asyncio.gather(first_reply, second_reply)
+
+    asyncio.run(scenario())
 
     conversation = client.get(
         f"/api/conversations/{conversation_id}",
@@ -129,7 +129,7 @@ def test_demo_guide_replies_to_user_question_without_repeating_template() -> Non
     assert guide_replies[0] != guide_replies[1]
 
 
-def test_demo_reply_skips_stale_user_message() -> None:
+def test_demo_reply_does_not_skip_earlier_user_message() -> None:
     reset_store()
     ticket = join("今天有点累，想安静聊一会儿")
     demo = client.post(
@@ -150,10 +150,12 @@ def test_demo_reply_skips_stale_user_message() -> None:
 
         refreshed = await store.get_conversation(conversation_id, ticket["access_token"])
         assert refreshed is not None
-        assert [
+        guide_replies = [
             message
             for message in refreshed.messages
             if message.sender_alias == "飞行雪绒"
-        ] == []
+        ]
+        assert len(guide_replies) == 1
+        assert guide_replies[0].content
 
     asyncio.run(scenario())

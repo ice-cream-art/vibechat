@@ -66,6 +66,10 @@ const CHAT_API_URL = (
   process.env.NEXT_PUBLIC_CHAT_API_URL || API_URL
 ).replace(/\/$/, "");
 
+const TTS_API_URL = process.env.NEXT_PUBLIC_TTS_API_URL?.replace(/\/$/, "");
+const TTS_REF_AUDIO_PATH = process.env.NEXT_PUBLIC_TTS_REF_AUDIO_PATH || "";
+const TTS_PROMPT_TEXT = process.env.NEXT_PUBLIC_TTS_PROMPT_TEXT || "";
+
 function websocketBaseUrl() {
   if (process.env.NEXT_PUBLIC_WS_URL) {
     return process.env.NEXT_PUBLIC_WS_URL.replace(/\/$/, "");
@@ -141,6 +145,8 @@ function apiErrorMessage(payload: unknown, fallback: string) {
 function sameMessageList(current: Message[], next: Message[]) {
   return current.length === next.length && current.every((message, index) => (
     message.id === next[index]?.id &&
+    message.sender_alias === next[index]?.sender_alias &&
+    message.content === next[index]?.content &&
     Boolean(message.pending) === Boolean(next[index]?.pending)
   ));
 }
@@ -171,11 +177,11 @@ function isMatchingOptimisticMessage(pending: Message, confirmed: Message) {
 }
 
 function mergeConfirmedMessages(current: Message[], confirmed: Message[]) {
-  const pending = current.filter((message) => (
-    message.pending &&
+  const preserved = current.filter((message) => (
+    !confirmed.some((item) => item.id === message.id) &&
     !confirmed.some((item) => isMatchingOptimisticMessage(message, item))
   ));
-  return [...confirmed, ...pending];
+  return [...confirmed, ...preserved];
 }
 
 function mergeIncomingMessage(current: Message[], incoming: Message) {
@@ -220,6 +226,14 @@ function guideSpeechVoice() {
     voices[0] ||
     null
   );
+}
+
+function ttsEndpoint() {
+  if (!TTS_API_URL) return "";
+  if (TTS_API_URL.startsWith("/") || /\/tts(?:[/?#]|$)/.test(TTS_API_URL)) {
+    return TTS_API_URL;
+  }
+  return `${TTS_API_URL}/tts`;
 }
 
 function createAudioContext() {
@@ -904,10 +918,22 @@ function ChatPanel({
   const socketRef = useRef<WebSocket | null>(null);
   const listRef = useRef<HTMLDivElement | null>(null);
   const endRef = useRef<HTMLDivElement | null>(null);
+  const activeSpeechIdRef = useRef<string | null>(null);
+  const speechAudioRef = useRef<HTMLAudioElement | null>(null);
+  const speechAudioUrlRef = useRef<string | null>(null);
   const messagesRef = useRef<Message[]>([]);
   const receivedInitialMessagesRef = useRef(false);
   const receiveSoundRef = useRef(onReceiveSound);
   const shouldStickToBottomRef = useRef(true);
+  const setSyncedMessages = useCallback((updater: Message[] | ((current: Message[]) => Message[])) => {
+    setMessages((current) => {
+      const next = typeof updater === "function"
+        ? (updater as (value: Message[]) => Message[])(current)
+        : updater;
+      messagesRef.current = next;
+      return next;
+    });
+  }, []);
   const isNearBottom = useCallback(() => {
     const list = listRef.current;
     if (!list) return true;
@@ -920,17 +946,15 @@ function ChatPanel({
   }, [onReceiveSound]);
 
   useEffect(() => {
-    messagesRef.current = messages;
-  }, [messages]);
-
-  useEffect(() => {
+    if (TTS_API_URL) setSpeechSupported(true);
     if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
-    setSpeechSupported(true);
-    const loadVoices = () => setSpeechSupported(window.speechSynthesis.getVoices().length >= 0);
+    const loadVoices = () => setSpeechSupported(true);
     window.speechSynthesis.addEventListener?.("voiceschanged", loadVoices);
     loadVoices();
     return () => {
       window.speechSynthesis.cancel();
+      speechAudioRef.current?.pause();
+      if (speechAudioUrlRef.current) URL.revokeObjectURL(speechAudioUrlRef.current);
       window.speechSynthesis.removeEventListener?.("voiceschanged", loadVoices);
     };
   }, []);
@@ -958,7 +982,7 @@ function ChatPanel({
           receivedInitialMessagesRef.current = true;
           const mergedMessages = mergeConfirmedMessages(messagesRef.current, payload.messages);
           messagesRef.current = mergedMessages;
-          setMessages((current) => sameMessageList(current, mergedMessages) ? current : mergedMessages);
+          setSyncedMessages((current) => sameMessageList(current, mergedMessages) ? current : mergedMessages);
         }
       })
       .catch((reason) => !disposed && setError(reason.message));
@@ -980,7 +1004,7 @@ function ChatPanel({
           if (incoming.sender_alias !== selfAlias) receiveSoundRef.current();
           messagesRef.current = mergeIncomingMessage(messagesRef.current, incoming);
         }
-        setMessages((current) => mergeIncomingMessage(current, incoming));
+        setSyncedMessages((current) => mergeIncomingMessage(current, incoming));
       }
     };
     return () => {
@@ -988,7 +1012,7 @@ function ChatPanel({
       window.clearInterval(poller);
       socket.close();
     };
-  }, [isNearBottom, match.access_token, match.conversation_id, selfAlias]);
+  }, [isNearBottom, match.access_token, match.conversation_id, selfAlias, setSyncedMessages]);
 
   useEffect(() => {
     if (!shouldStickToBottomRef.current) return;
@@ -1015,7 +1039,7 @@ function ChatPanel({
     setDraft("");
     shouldStickToBottomRef.current = true;
     messagesRef.current = [...messagesRef.current, optimisticMessage];
-    setMessages((current) => [...current, optimisticMessage]);
+    setSyncedMessages((current) => [...current, optimisticMessage]);
     onSendSound();
     try {
       const response = await fetch(
@@ -1030,22 +1054,31 @@ function ChatPanel({
       if (!response.ok) throw new Error(apiErrorMessage(payload, "消息发送失败"));
       shouldStickToBottomRef.current = true;
       messagesRef.current = mergeIncomingMessage(messagesRef.current, payload);
-      setMessages((current) => mergeIncomingMessage(current, payload));
+      setSyncedMessages((current) => mergeIncomingMessage(current, payload));
     } catch (reason) {
       setDraft(content);
       messagesRef.current = messagesRef.current.filter((message) => message.id !== optimisticMessage.id);
-      setMessages((current) => current.filter((message) => message.id !== optimisticMessage.id));
+      setSyncedMessages((current) => current.filter((message) => message.id !== optimisticMessage.id));
       setError(reason instanceof Error ? reason.message : "消息发送失败");
     }
   };
 
-  const speakGuideMessage = (message: Message) => {
-    if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
-    if (speakingMessageId === message.id) {
+  const stopGuideSpeech = () => {
+    if (typeof window !== "undefined" && "speechSynthesis" in window) {
       window.speechSynthesis.cancel();
-      setSpeakingMessageId(null);
-      return;
     }
+    speechAudioRef.current?.pause();
+    speechAudioRef.current = null;
+    if (speechAudioUrlRef.current) {
+      URL.revokeObjectURL(speechAudioUrlRef.current);
+      speechAudioUrlRef.current = null;
+    }
+    activeSpeechIdRef.current = null;
+    setSpeakingMessageId(null);
+  };
+
+  const playBrowserGuideSpeech = (message: Message) => {
+    if (typeof window === "undefined" || !("speechSynthesis" in window)) return false;
     window.speechSynthesis.cancel();
     const utterance = new SpeechSynthesisUtterance(message.content);
     utterance.lang = "zh-CN";
@@ -1054,10 +1087,76 @@ function ChatPanel({
     utterance.volume = 0.92;
     const voice = guideSpeechVoice();
     if (voice) utterance.voice = voice;
-    utterance.onend = () => setSpeakingMessageId((current) => current === message.id ? null : current);
-    utterance.onerror = () => setSpeakingMessageId((current) => current === message.id ? null : current);
-    setSpeakingMessageId(message.id);
+    const clearBrowserSpeech = () => {
+      if (activeSpeechIdRef.current === message.id) activeSpeechIdRef.current = null;
+      setSpeakingMessageId((current) => current === message.id ? null : current);
+    };
+    utterance.onend = clearBrowserSpeech;
+    utterance.onerror = clearBrowserSpeech;
     window.speechSynthesis.speak(utterance);
+    return true;
+  };
+
+  const playExternalGuideSpeech = async (message: Message) => {
+    const endpoint = ttsEndpoint();
+    if (!endpoint) return false;
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        text: message.content,
+        speaker: "飞行雪绒",
+        lang: "zh-CN",
+        text_lang: "zh",
+        ref_audio_path: TTS_REF_AUDIO_PATH,
+        prompt_text: TTS_PROMPT_TEXT,
+        prompt_lang: "zh",
+        text_split_method: "cut5",
+        batch_size: 1,
+        media_type: "wav",
+        streaming_mode: false,
+      }),
+    });
+    if (!response.ok) throw new Error("本地 TTS 暂时没有回应");
+    const contentType = response.headers.get("content-type") || "";
+    let audioUrl = "";
+    if (contentType.includes("application/json")) {
+      const payload = await response.json();
+      audioUrl = payload.audio_url || payload.audioUrl || payload.url || "";
+      if (audioUrl && endpoint.startsWith("http") && audioUrl.startsWith("/")) {
+        audioUrl = new URL(audioUrl, endpoint).toString();
+      }
+    } else {
+      const blob = await response.blob();
+      audioUrl = URL.createObjectURL(blob);
+      speechAudioUrlRef.current = audioUrl;
+    }
+    if (!audioUrl) throw new Error("本地 TTS 没有返回音频");
+    const audio = new Audio(audioUrl);
+    speechAudioRef.current = audio;
+    audio.onended = () => stopGuideSpeech();
+    audio.onerror = () => stopGuideSpeech();
+    await audio.play();
+    return true;
+  };
+
+  const speakGuideMessage = (message: Message) => {
+    if (speakingMessageId === message.id) {
+      stopGuideSpeech();
+      return;
+    }
+    stopGuideSpeech();
+    activeSpeechIdRef.current = message.id;
+    setSpeakingMessageId(message.id);
+    void playExternalGuideSpeech(message)
+      .then((played) => {
+        if (activeSpeechIdRef.current !== message.id) return;
+        if (!played && !playBrowserGuideSpeech(message)) stopGuideSpeech();
+      })
+      .catch(() => {
+        if (activeSpeechIdRef.current !== message.id) return;
+        if (!playBrowserGuideSpeech(message)) stopGuideSpeech();
+      });
   };
 
   const score = Math.round((match.match_score || conversation?.match_score || 0) * 100);

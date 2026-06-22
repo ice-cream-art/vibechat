@@ -23,4 +23,5 @@ Thumbs.db
 
 # Temporary files
 tmp/
-
+frontend/logs/
+backend/logs/

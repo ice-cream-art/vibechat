@@ -25,6 +25,7 @@ store = Store(
     redis_url=settings.redis_url,
     redis_token=settings.redis_token,
 )
+demo_reply_locks: dict[str, asyncio.Lock] = {}
 
 app = FastAPI(
     title="VibeChat API",
@@ -160,7 +161,7 @@ async def post_message(
         raise HTTPException(status_code=404, detail="会话不存在或凭证无效")
     message = await store.add_message(conversation, access_token, request.content)
     if store.has_demo_partner(conversation, access_token):
-        await send_demo_reply(conversation, access_token, message)
+        asyncio.create_task(send_demo_reply(conversation, access_token, message))
     return message
 
 
@@ -189,23 +190,29 @@ async def conversation_socket(websocket: WebSocket, conversation_id: str, token:
 
 
 async def send_demo_reply(conversation, user_token: str, trigger_message: MessageRecord) -> None:
-    await asyncio.sleep(0.8)
-    latest_user_message = await store.latest_message_from(conversation.id, user_token)
-    if not latest_user_message or latest_user_message.id != trigger_message.id:
-        return
-    current_conversation = await store.get_conversation(conversation.id, user_token)
-    if not current_conversation:
-        return
-    demo_token = next(key for key in current_conversation.demo_tokens if key != user_token)
-    recent_messages = [
-        {
-            "role": "assistant" if message.sender_token in current_conversation.demo_tokens else "user",
-            "content": message.content,
-        }
-        for message in current_conversation.messages[-9:-1]
-    ]
-    reply = await generate_companion_reply(settings, trigger_message.content, recent_messages)
-    latest_user_message = await store.latest_message_from(conversation.id, user_token)
-    if not latest_user_message or latest_user_message.id != trigger_message.id:
-        return
-    await store.add_message(current_conversation, demo_token, reply)
+    lock = demo_reply_locks.setdefault(conversation.id, asyncio.Lock())
+    async with lock:
+        await asyncio.sleep(0.35)
+        current_conversation = await store.get_conversation(conversation.id, user_token)
+        if not current_conversation:
+            return
+        try:
+            trigger_index = next(
+                index for index, message in enumerate(current_conversation.messages)
+                if message.id == trigger_message.id
+            )
+        except StopIteration:
+            return
+        demo_token = next(key for key in current_conversation.demo_tokens if key != user_token)
+        recent_messages = [
+            {
+                "role": "assistant" if message.sender_token in current_conversation.demo_tokens else "user",
+                "content": message.content,
+            }
+            for message in current_conversation.messages[max(0, trigger_index - 8):trigger_index]
+        ]
+        reply = await generate_companion_reply(settings, trigger_message.content, recent_messages)
+        latest_conversation = await store.get_conversation(conversation.id, user_token)
+        if not latest_conversation:
+            return
+        await store.add_message(latest_conversation, demo_token, reply)

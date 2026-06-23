@@ -42,6 +42,7 @@ type MatchStatus = {
 type Message = {
   id: string;
   sender_alias: string;
+  sender_kind?: "user" | "assistant";
   content: string;
   created_at: string;
   pending?: boolean;
@@ -69,6 +70,7 @@ const CHAT_API_URL = (
 const TTS_API_URL = process.env.NEXT_PUBLIC_TTS_API_URL?.replace(/\/$/, "");
 const TTS_REF_AUDIO_PATH = process.env.NEXT_PUBLIC_TTS_REF_AUDIO_PATH || "";
 const TTS_PROMPT_TEXT = process.env.NEXT_PUBLIC_TTS_PROMPT_TEXT || "";
+const ASSISTANT_MENTION = "@飞行雪绒 ";
 
 function websocketBaseUrl() {
   if (process.env.NEXT_PUBLIC_WS_URL) {
@@ -146,6 +148,7 @@ function sameMessageList(current: Message[], next: Message[]) {
   return current.length === next.length && current.every((message, index) => (
     message.id === next[index]?.id &&
     message.sender_alias === next[index]?.sender_alias &&
+    (message.sender_kind || "user") === (next[index]?.sender_kind || "user") &&
     message.content === next[index]?.content &&
     Boolean(message.pending) === Boolean(next[index]?.pending)
   ));
@@ -918,6 +921,7 @@ function ChatPanel({
   const socketRef = useRef<WebSocket | null>(null);
   const listRef = useRef<HTMLDivElement | null>(null);
   const endRef = useRef<HTMLDivElement | null>(null);
+  const inputRef = useRef<HTMLInputElement | null>(null);
   const activeSpeechIdRef = useRef<string | null>(null);
   const speechAudioRef = useRef<HTMLAudioElement | null>(null);
   const speechAudioUrlRef = useRef<string | null>(null);
@@ -940,6 +944,15 @@ function ChatPanel({
     return list.scrollHeight - list.scrollTop - list.clientHeight < 120;
   }, []);
   const selfAlias = conversation?.self_alias || match.alias || "我";
+  const partnerIsGuide = Boolean(conversation?.partner_is_demo ?? match.partner_is_demo);
+
+  const insertAssistantMention = () => {
+    setDraft((current) => {
+      if (/[@＠]\s*(飞行雪绒|AI|同频向导|助手)/i.test(current)) return current;
+      return `${ASSISTANT_MENTION}${current}`.slice(0, 1000);
+    });
+    window.requestAnimationFrame(() => inputRef.current?.focus());
+  };
 
   useEffect(() => {
     receiveSoundRef.current = onReceiveSound;
@@ -1032,6 +1045,7 @@ function ChatPanel({
     const optimisticMessage: Message = {
       id: `local-${Date.now()}-${Math.random().toString(36).slice(2)}`,
       sender_alias: selfAlias,
+      sender_kind: "user",
       content,
       created_at: new Date().toISOString(),
       pending: true,
@@ -1161,7 +1175,6 @@ function ChatPanel({
 
   const score = Math.round((match.match_score || conversation?.match_score || 0) * 100);
   const guideEmotion = emotion?.primary_emotion || "复杂";
-  const partnerIsGuide = Boolean(conversation?.partner_is_demo ?? match.partner_is_demo);
   return (
     <div className="chatLayout">
       <aside className="chatAside">
@@ -1184,7 +1197,7 @@ function ChatPanel({
             ) : (
               <span className="avatar">{(match.partner_alias || "同").slice(0, 1)}</span>
             )}
-            <div><b>{match.partner_alias || "同频的人"}</b><span><i className={`connectionDot ${connection}`} />{(conversation?.partner_is_demo ?? match.partner_is_demo) ? "飞行雪绒 · 自动回复" : connection === "online" ? "真人伙伴 · 等待回复" : connection === "connecting" ? "正在连接" : "连接已断开"}</span></div>
+            <div><b>{match.partner_alias || "同频的人"}</b><span><i className={`connectionDot ${connection}`} />{partnerIsGuide ? "飞行雪绒 · 自动回复" : connection === "online" ? "真人伙伴 · 可 @飞行雪绒" : connection === "connecting" ? "正在连接" : "连接已断开"}</span></div>
           </div>
           <span className="anonymousBadge">匿名会话</span>
         </header>
@@ -1192,8 +1205,9 @@ function ChatPanel({
           <AtmosphereLayer mode={atmosphereMode} mood={guideEmotion} variant="panel" />
           <div className="systemMessage"><span>✦</span> 你们因为相近的情绪频率来到这里<br /><small>不用急着表现，做此刻的自己就好</small></div>
           {messages.map((message) => {
-            const mine = message.sender_alias === selfAlias;
-            const guideMessage = partnerIsGuide && !mine;
+            const assistantMessage = message.sender_kind === "assistant";
+            const mine = !assistantMessage && message.sender_alias === selfAlias;
+            const guideMessage = assistantMessage || (partnerIsGuide && !mine);
             return (
               <div className={`messageRow ${mine ? "mine" : "theirs"} ${message.pending ? "pending" : ""}`} key={message.id}>
                 {!mine && (
@@ -1229,11 +1243,22 @@ function ChatPanel({
         </div>
         <form className="messageComposer" onSubmit={send}>
           <label className="srOnly" htmlFor="message">发送消息</label>
+          {!partnerIsGuide && (
+            <button
+              className="mentionButton"
+              onClick={insertAssistantMention}
+              title="邀请飞行雪绒读取最近对话并回复"
+              type="button"
+            >
+              @AI
+            </button>
+          )}
           <input
             id="message"
+            ref={inputRef}
             value={draft}
             onChange={(event) => setDraft(event.target.value.slice(0, 1000))}
-            placeholder={connection === "online" ? "从一句“我懂”开始……" : "等待连接恢复"}
+            placeholder={connection === "online" ? partnerIsGuide ? "从一句“我懂”开始……" : "输入消息，或 @飞行雪绒 邀请 AI" : "等待连接恢复"}
             disabled={connection !== "online"}
             autoComplete="off"
           />
@@ -1252,6 +1277,9 @@ function ChatPanel({
         </div>
         <div className="guideBlock">
           <span className="tinyLabel">破冰提示</span>
+          {!partnerIsGuide && (
+            <p className="assistantHint">@飞行雪绒 后，AI 会读取本房间最近对话并回复。</p>
+          )}
           {guideTips.map((tip) => <button type="button" key={tip}>{tip}</button>)}
         </div>
       </aside>

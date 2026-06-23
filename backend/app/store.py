@@ -14,6 +14,8 @@ from .models import EmotionResult, MessageRecord
 
 
 WAITING_ACTIVE_SECONDS = 6
+ASSISTANT_ALIAS = "飞行雪绒"
+ASSISTANT_TOKEN = "__vibechat_assistant__"
 
 
 ADJECTIVES = ["安静", "柔软", "清醒", "闪光", "慢热", "勇敢", "自由", "温暖"]
@@ -185,6 +187,7 @@ class Store:
                     id=item["id"],
                     sender_alias=item["sender_alias"],
                     sender_token=item.get("sender_token", ""),
+                    sender_kind=item.get("sender_kind", "user"),
                     content=item["content"],
                     created_at=item["created_at"],
                 )
@@ -375,6 +378,17 @@ class Store:
     def disconnect(self, conversation_id: str, token: str) -> None:
         self.connections.get(conversation_id, {}).pop(token, None)
 
+    async def _broadcast_message(self, conversation_id: str, message: MessageRecord) -> None:
+        payload = {"type": "message", "message": message.model_dump(mode="json")}
+        stale: list[str] = []
+        for participant_token, websocket in self.connections.get(conversation_id, {}).items():
+            try:
+                await websocket.send_json(payload)
+            except RuntimeError:
+                stale.append(participant_token)
+        for participant_token in stale:
+            self.disconnect(conversation_id, participant_token)
+
     async def add_message(self, conversation: Conversation, token: str, content: str) -> MessageRecord:
         lock_token = ""
         if self.redis_enabled:
@@ -382,6 +396,7 @@ class Store:
             current = await self._load_conversation(conversation.id)
             if not current or token not in current.participants:
                 await self._release_redis_lock(lock_token)
+                lock_token = ""
                 raise KeyError("invalid conversation")
             conversation = current
         try:
@@ -394,15 +409,36 @@ class Store:
             conversation.messages.append(message)
             if self.redis_enabled:
                 await self._save_conversation(conversation)
-            payload = {"type": "message", "message": message.model_dump(mode="json")}
-            stale: list[str] = []
-            for participant_token, websocket in self.connections.get(conversation.id, {}).items():
-                try:
-                    await websocket.send_json(payload)
-                except RuntimeError:
-                    stale.append(participant_token)
-            for participant_token in stale:
-                self.disconnect(conversation.id, participant_token)
+            await self._broadcast_message(conversation.id, message)
+            return message
+        finally:
+            if lock_token:
+                await self._release_redis_lock(lock_token)
+
+    async def add_assistant_message(self, conversation_id: str, content: str) -> MessageRecord:
+        lock_token = ""
+        conversation: Conversation | None
+        if self.redis_enabled:
+            lock_token = await self._acquire_redis_lock()
+            conversation = await self._load_conversation(conversation_id)
+        else:
+            conversation = self.conversations.get(conversation_id)
+        if not conversation:
+            if lock_token:
+                await self._release_redis_lock(lock_token)
+            raise KeyError("invalid conversation")
+        try:
+            message = MessageRecord(
+                id=str(uuid.uuid4()),
+                sender_alias=ASSISTANT_ALIAS,
+                sender_token=ASSISTANT_TOKEN,
+                sender_kind="assistant",
+                content=content.strip(),
+            )
+            conversation.messages.append(message)
+            if self.redis_enabled:
+                await self._save_conversation(conversation)
+            await self._broadcast_message(conversation.id, message)
             return message
         finally:
             if lock_token:

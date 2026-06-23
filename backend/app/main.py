@@ -1,4 +1,5 @@
 import asyncio
+import re
 from datetime import datetime, timezone
 
 from fastapi import FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect
@@ -26,6 +27,17 @@ store = Store(
     redis_token=settings.redis_token,
 )
 demo_reply_locks: dict[str, asyncio.Lock] = {}
+assistant_reply_locks: dict[str, asyncio.Lock] = {}
+ASSISTANT_MENTION_PATTERN = re.compile(r"[@＠]\s*(飞行雪绒|AI|同频向导|助手)", re.IGNORECASE)
+
+
+def mentions_assistant(content: str) -> bool:
+    return bool(ASSISTANT_MENTION_PATTERN.search(content))
+
+
+def strip_assistant_mention(content: str) -> str:
+    cleaned = ASSISTANT_MENTION_PATTERN.sub("", content).strip()
+    return cleaned.strip(" ，,。.!！?？:：") or "我想听听你的看法。"
 
 app = FastAPI(
     title="VibeChat API",
@@ -162,6 +174,8 @@ async def post_message(
     message = await store.add_message(conversation, access_token, request.content)
     if store.has_demo_partner(conversation, access_token):
         asyncio.create_task(send_demo_reply(conversation, access_token, message))
+    elif mentions_assistant(request.content):
+        asyncio.create_task(send_mention_reply(conversation.id, access_token, message))
     return message
 
 
@@ -185,6 +199,8 @@ async def conversation_socket(websocket: WebSocket, conversation_id: str, token:
             message = await store.add_message(conversation, token, content)
             if store.has_demo_partner(conversation, token):
                 asyncio.create_task(send_demo_reply(conversation, token, message))
+            elif mentions_assistant(content):
+                asyncio.create_task(send_mention_reply(conversation.id, token, message))
     except WebSocketDisconnect:
         store.disconnect(conversation_id, token)
 
@@ -216,3 +232,36 @@ async def send_demo_reply(conversation, user_token: str, trigger_message: Messag
         if not latest_conversation:
             return
         await store.add_message(latest_conversation, demo_token, reply)
+
+
+async def send_mention_reply(conversation_id: str, user_token: str, trigger_message: MessageRecord) -> None:
+    lock = assistant_reply_locks.setdefault(conversation_id, asyncio.Lock())
+    async with lock:
+        await asyncio.sleep(0.35)
+        current_conversation = await store.get_conversation(conversation_id, user_token)
+        if not current_conversation or store.has_demo_partner(current_conversation, user_token):
+            return
+        try:
+            trigger_index = next(
+                index for index, message in enumerate(current_conversation.messages)
+                if message.id == trigger_message.id
+            )
+        except StopIteration:
+            return
+        recent_messages = [
+            {
+                "role": "assistant" if message.sender_kind == "assistant" else "user",
+                "content": (
+                    message.content
+                    if message.sender_kind == "assistant"
+                    else f"{message.sender_alias}: {message.content}"
+                ),
+            }
+            for message in current_conversation.messages[max(0, trigger_index - 10):trigger_index]
+        ]
+        reply = await generate_companion_reply(
+            settings,
+            strip_assistant_mention(trigger_message.content),
+            recent_messages,
+        )
+        await store.add_assistant_message(conversation_id, reply)

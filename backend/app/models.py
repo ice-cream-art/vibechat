@@ -42,6 +42,9 @@ class MessageCreateRequest(BaseModel):
         return value
 
 
+MessageSenderKind = Literal["user", "assistant"]
+
+
 class EmotionResult(BaseModel):
     primary_emotion: EmotionName
     secondary_emotions: list[EmotionName] = Field(default_factory=list, max_length=3)
@@ -84,6 +87,7 @@ class MessageRecord(BaseModel):
     id: str
     sender_alias: str
     sender_token: str = Field(exclude=True)
+    sender_kind: MessageSenderKind = "user"
     content: str = Field(min_length=1, max_length=1000)
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 

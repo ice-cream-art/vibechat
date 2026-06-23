@@ -2,7 +2,15 @@ import asyncio
 
 from fastapi.testclient import TestClient
 
-from app.main import app, demo_reply_locks, send_demo_reply, settings, store
+from app.main import (
+    app,
+    assistant_reply_locks,
+    demo_reply_locks,
+    send_demo_reply,
+    send_mention_reply,
+    settings,
+    store,
+)
 
 
 client = TestClient(app)
@@ -13,6 +21,7 @@ def reset_store() -> None:
     store.tickets.clear()
     store.conversations.clear()
     store.connections.clear()
+    assistant_reply_locks.clear()
     demo_reply_locks.clear()
 
 
@@ -89,6 +98,43 @@ def test_rest_message_fallback() -> None:
     )
     assert conversation.status_code == 200
     assert conversation.json()["messages"][0]["content"] == "你好，想聊聊今天的心情。"
+    assert conversation.json()["messages"][0]["sender_kind"] == "user"
+
+
+def test_two_user_room_can_mention_assistant_without_adding_participant() -> None:
+    reset_store()
+    first = join("比赛快开始了，我很焦虑，担心来不及")
+    second = join("我也很紧张，比赛让我焦虑，怕自己做不完")
+    first_status = status(first)
+    assert first_status["status"] == "matched"
+    conversation_id = first_status["conversation_id"]
+
+    async def scenario() -> None:
+        conversation = await store.get_conversation(conversation_id, first["access_token"])
+        assert conversation is not None
+        assert len(conversation.participants) == 2
+        message = await store.add_message(conversation, first["access_token"], "@飞行雪绒 你怎么看？")
+        await send_mention_reply(conversation_id, first["access_token"], message)
+        refreshed = await store.get_conversation(conversation_id, first["access_token"])
+        assert refreshed is not None
+        assert len(refreshed.participants) == 2
+
+    asyncio.run(scenario())
+
+    conversation = client.get(
+        f"/api/conversations/{conversation_id}",
+        params={"access_token": second["access_token"]},
+    )
+    assert conversation.status_code == 200
+    messages = conversation.json()["messages"]
+    assistant_messages = [
+        message
+        for message in messages
+        if message["sender_kind"] == "assistant"
+    ]
+    assert len(assistant_messages) == 1
+    assert assistant_messages[0]["sender_alias"] == "飞行雪绒"
+    assert assistant_messages[0]["content"]
 
 
 def test_demo_guide_replies_to_user_question_without_repeating_template() -> None:

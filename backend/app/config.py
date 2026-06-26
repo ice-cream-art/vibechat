@@ -21,7 +21,9 @@ class Settings(BaseSettings):
     anthropic_model: str = "claude-sonnet-4-20250514"
 
     cors_origins: str = "http://localhost:3000,http://127.0.0.1:3000"
-    cors_origin_regex: str = r"https://.*\.trycloudflare\.com"
+    cors_origin_regex: str = (
+        r"^https://.*(\.trycloudflare\.com|\.app\.tcloudbase\.com|\.tcloudbasegateway\.com|\.tcb\.cloud\.tencent\.com)$"
+    )
     match_threshold: float = Field(default=0.56, ge=0, le=1)
 
     kv_rest_api_url: str = ""

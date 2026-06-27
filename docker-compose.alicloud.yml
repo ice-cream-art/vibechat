@@ -9,6 +9,12 @@ services:
       OPENAI_MODEL: ${OPENAI_MODEL:-deepseek-v4-pro}
       CORS_ORIGINS: ${CORS_ORIGINS:-}
       CORS_ORIGIN_REGEX: ${CORS_ORIGIN_REGEX:-^https?://.*$}
+      AUTH_EMAIL: ${AUTH_EMAIL:-3117681462@qq.com}
+      AUTH_PASSWORD: ${AUTH_PASSWORD:-vibechat2026}
+      AUTH_DISPLAY_NAME: ${AUTH_DISPLAY_NAME:-VibeChat 用户}
+      AUTH_USERS: ${AUTH_USERS:-}
+      AUTH_SECRET_KEY: ${AUTH_SECRET_KEY:-vibechat-local-dev-secret}
+      AUTH_SESSION_TTL_SECONDS: ${AUTH_SESSION_TTL_SECONDS:-604800}
 
   frontend:
     build:

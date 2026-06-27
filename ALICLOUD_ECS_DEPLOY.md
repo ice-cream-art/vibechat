@@ -46,6 +46,9 @@ LLM_PROVIDER=openai
 OPENAI_API_KEY=replace_with_your_key
 OPENAI_BASE_URL=https://api.deepseek.com
 OPENAI_MODEL=deepseek-v4-pro
+
+AUTH_SECRET_KEY=replace_with_a_long_random_secret
+AUTH_USERS=[{"email":"3117681462@qq.com","password":"vibechat2026","display_name":"VibeChat user"},{"email":"22013318","password":"535311","display_name":"Qingxing Planet 18"},{"email":"22013319","password":"535311","display_name":"Warm Beacon 19"},{"email":"22013320","password":"535311","display_name":"Shimmer Cloud 20"},{"email":"220013321","password":"535311","display_name":"Free Bird 21"}]
 EOF
 ```
 

@@ -58,6 +58,11 @@ type Conversation = {
   partner_is_demo?: boolean;
 };
 
+type AuthUser = {
+  email: string;
+  display_name: string;
+};
+
 const API_URL = (
   process.env.NEXT_PUBLIC_API_URL ||
   (process.env.NODE_ENV === "production" ? "/_/backend" : "http://localhost:8000")
@@ -455,6 +460,8 @@ export default function Home() {
   const [emotion, setEmotion] = useState<EmotionResult | null>(null);
   const [ticket, setTicket] = useState<MatchTicket | null>(null);
   const [match, setMatch] = useState<MatchStatus | null>(null);
+  const [authUser, setAuthUser] = useState<AuthUser | null>(null);
+  const [authChecking, setAuthChecking] = useState(true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [atmosphereMode, setAtmosphereMode] = useState<AtmosphereMode>("auto");
@@ -462,6 +469,11 @@ export default function Home() {
   const soundEngineRef = useRef<MoodAudioEngine | null>(null);
   const previousPhaseRef = useRef<Phase>("input");
   const currentMood = emotion?.primary_emotion || "平静";
+
+  const redirectToLogin = useCallback(() => {
+    const next = encodeURIComponent(`${window.location.pathname}${window.location.search}`);
+    window.location.replace(`/login?next=${next}`);
+  }, []);
 
   const ensureSoundEngine = useCallback(() => {
     if (!soundEngineRef.current && typeof window !== "undefined") {
@@ -491,6 +503,32 @@ export default function Home() {
       engine?.stopAmbient();
     }
   };
+
+  useEffect(() => {
+    let disposed = false;
+    void fetch(`${API_URL}/api/auth/me`, {
+      cache: "no-store",
+      credentials: "include",
+    })
+      .then(async (response) => {
+        if (disposed) return;
+        if (!response.ok) {
+          redirectToLogin();
+          return;
+        }
+        const payload = await response.json() as { user: AuthUser };
+        setAuthUser(payload.user);
+      })
+      .catch(() => {
+        if (!disposed) redirectToLogin();
+      })
+      .finally(() => {
+        if (!disposed) setAuthChecking(false);
+      });
+    return () => {
+      disposed = true;
+    };
+  }, [redirectToLogin]);
 
   useEffect(() => {
     setSoundEnabled(window.localStorage.getItem("vibechat-sound") === "on");
@@ -620,6 +658,23 @@ export default function Home() {
     setError("");
   };
 
+  const logout = async () => {
+    await fetch(`${API_URL}/api/auth/logout`, {
+      method: "POST",
+      credentials: "include",
+    }).catch(() => undefined);
+    window.location.replace("/login");
+  };
+
+  if (authChecking || !authUser) {
+    return (
+      <main className="shell authGate">
+        <div className="miniSpinner" aria-hidden="true" />
+        <p>正在进入 VibeChat</p>
+      </main>
+    );
+  }
+
   return (
     <main className="shell">
       <AtmosphereLayer mode={atmosphereMode} mood={currentMood} />
@@ -665,8 +720,8 @@ export default function Home() {
           <span>{soundEnabled ? "声" : "静"}</span>
           <i />
         </button>
-        <button className="registerButton" type="button">注册</button>
-        <button className="loginButton" type="button">登录</button>
+        <span className="userPill" title={authUser.email}>{authUser.display_name}</span>
+        <button className="loginButton" type="button" onClick={logout}>退出</button>
       </header>
 
       <section className={`stage phase-${phase}`}>

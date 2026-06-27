@@ -26,6 +26,12 @@ class Settings(BaseSettings):
     )
     match_threshold: float = Field(default=0.56, ge=0, le=1)
 
+    auth_email: str = "3117681462@qq.com"
+    auth_password: str = "vibechat2026"
+    auth_display_name: str = "VibeChat 用户"
+    auth_secret_key: str = "vibechat-local-dev-secret"
+    auth_session_ttl_seconds: int = Field(default=60 * 60 * 24 * 7, ge=300)
+
     kv_rest_api_url: str = ""
     kv_rest_api_token: str = ""
     upstash_redis_rest_url: str = ""

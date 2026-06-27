@@ -303,26 +303,6 @@ button { color: inherit; }
   border-radius: 50%;
   background: radial-gradient(circle, rgba(49,199,189,.22), rgba(244,165,207,.12) 48%, transparent 70%);
 }
-.heroCompanion {
-  position: absolute;
-  top: 26px;
-  right: 30px;
-  z-index: 2;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 10px 12px 10px 10px;
-  border: 1px solid rgba(49,199,189,.22);
-  border-radius: 18px;
-  background: rgba(255,255,255,.78);
-  box-shadow: 0 16px 40px rgba(49,199,189,.16);
-  backdrop-filter: blur(14px);
-  pointer-events: none;
-}
-.heroCompanion .guideAvatar-lg { width: 68px; height: 68px; }
-.heroCompanion div { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
-.heroCompanion b { color: #2f4252; font-size: 13px; line-height: 1.2; }
-.heroCompanion span { color: #6a7a86; font-size: 12px; line-height: 1.35; white-space: nowrap; }
 .eyebrow { color: var(--accent-strong); font-size: 11px; letter-spacing: .16em; font-weight: 800; display: flex; gap: 10px; align-items: center; margin-bottom: 22px; text-transform: uppercase; }
 .eyebrow > span { width: 32px; height: 3px; border-radius: 999px; background: var(--accent); }
 .heroCopy h1, .resultIntro h2 { font-weight: 800; letter-spacing: 0; line-height: 1.16; margin: 0; color: #243241; }
@@ -711,15 +691,6 @@ textarea::placeholder { color: #aab5bd; }
   .registerButton { min-width: 68px; height: 40px; }
   .stage { padding: 18px 0; }
   .heroCopy { padding: 28px; }
-  .heroCompanion {
-    position: relative;
-    top: auto;
-    right: auto;
-    width: fit-content;
-    max-width: 100%;
-    margin: 0 0 24px;
-  }
-  .heroCompanion .guideAvatar-lg { width: 54px; height: 54px; }
   .heroCopy h1 { font-size: 38px; }
   .lead { font-size: 14px; }
   .topicGrid { grid-template-columns: 1fr; }

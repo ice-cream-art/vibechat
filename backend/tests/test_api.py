@@ -74,6 +74,36 @@ def test_full_two_user_match_and_websocket_chat() -> None:
             assert received["message"]["content"] == "我有点紧张，你呢？"
 
 
+def test_auth_login_me_and_logout_flow() -> None:
+    reset_store()
+    auth_client = TestClient(app)
+    login = auth_client.post(
+        "/api/auth/login",
+        json={"account": settings.auth_email.upper(), "password": settings.auth_password},
+    )
+    assert login.status_code == 200
+    assert login.json()["user"]["email"] == settings.auth_email
+    assert "vibechat_session" in login.cookies
+
+    me = auth_client.get("/api/auth/me")
+    assert me.status_code == 200
+    assert me.json()["user"]["display_name"] == settings.auth_display_name
+
+    logout = auth_client.post("/api/auth/logout")
+    assert logout.status_code == 200
+
+    after_logout = auth_client.get("/api/auth/me")
+    assert after_logout.status_code == 401
+
+
+def test_auth_rejects_wrong_password() -> None:
+    response = client.post(
+        "/api/auth/login",
+        json={"account": settings.auth_email, "password": "wrong-password"},
+    )
+    assert response.status_code == 401
+
+
 def test_rest_message_fallback() -> None:
     reset_store()
     ticket = join("今天有点累，想安静聊一会儿")

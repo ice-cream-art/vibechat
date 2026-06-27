@@ -21,8 +21,16 @@ class Settings(BaseSettings):
     anthropic_model: str = "claude-sonnet-4-20250514"
 
     cors_origins: str = "http://localhost:3000,http://127.0.0.1:3000"
-    cors_origin_regex: str = r"https://.*\.trycloudflare\.com"
+    cors_origin_regex: str = (
+        r"^https://.*(\.trycloudflare\.com|\.app\.tcloudbase\.com|\.tcloudbasegateway\.com|\.tcb\.cloud\.tencent\.com)$"
+    )
     match_threshold: float = Field(default=0.56, ge=0, le=1)
+
+    auth_email: str = "3117681462@qq.com"
+    auth_password: str = "vibechat2026"
+    auth_display_name: str = "VibeChat 用户"
+    auth_secret_key: str = "vibechat-local-dev-secret"
+    auth_session_ttl_seconds: int = Field(default=60 * 60 * 24 * 7, ge=300)
 
     kv_rest_api_url: str = ""
     kv_rest_api_token: str = ""

@@ -42,6 +42,25 @@ class MessageCreateRequest(BaseModel):
         return value
 
 
+class LoginRequest(BaseModel):
+    account: str = Field(min_length=3, max_length=120)
+    password: str = Field(min_length=6, max_length=128)
+
+    @field_validator("account")
+    @classmethod
+    def normalize_account(cls, value: str) -> str:
+        return value.strip().lower()
+
+
+class AuthUser(BaseModel):
+    email: str
+    display_name: str
+
+
+class AuthResponse(BaseModel):
+    user: AuthUser
+
+
 MessageSenderKind = Literal["user", "assistant"]
 
 

@@ -2,15 +2,18 @@ import asyncio
 import re
 from datetime import datetime, timezone
 
-from fastapi import FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, Query, Request, Response, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 
+from .auth import authenticate, clear_session_cookie, read_session, set_session_cookie
 from .config import get_settings
 from .llm import LLMProviderError, generate_companion_reply, get_provider
 from .models import (
+    AuthResponse,
     ConversationResponse,
     EmotionRequest,
     EmotionResult,
+    LoginRequest,
     MatchJoinRequest,
     MatchJoinResponse,
     MatchStatusResponse,
@@ -62,6 +65,26 @@ async def health() -> dict[str, str]:
         "storage": store.storage_name,
         "time": datetime.now(timezone.utc).isoformat(),
     }
+
+
+@app.post("/api/auth/login", response_model=AuthResponse)
+async def login(request: Request, response: Response, payload: LoginRequest) -> AuthResponse:
+    user = authenticate(settings, payload.account, payload.password)
+    if not user:
+        raise HTTPException(status_code=401, detail="账号或密码不正确")
+    set_session_cookie(settings, request, response, user)
+    return AuthResponse(user=user)
+
+
+@app.get("/api/auth/me", response_model=AuthResponse)
+async def me(request: Request) -> AuthResponse:
+    return AuthResponse(user=read_session(settings, request))
+
+
+@app.post("/api/auth/logout", response_model=dict[str, bool])
+async def logout(request: Request, response: Response) -> dict[str, bool]:
+    clear_session_cookie(request, response)
+    return {"ok": True}
 
 
 @app.post("/api/emotions/analyze", response_model=EmotionResult)

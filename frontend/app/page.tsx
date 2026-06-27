@@ -736,6 +736,13 @@ function InputPanel({
   return (
     <div className="heroGrid">
       <div className="heroCopy">
+        <div className="heroCompanion" aria-label="飞行雪绒">
+          <GuideAvatar emotion="平静" size="lg" />
+          <div>
+            <b>飞行雪绒</b>
+            <span>我在，慢慢写就好</span>
+          </div>
+        </div>
         <div className="eyebrow"><span /> YOUR FEELING, RIGHT NOW</div>
         <h1>有人会懂得<br /><em>你此刻的频率</em></h1>
         <p className="lead">不需要完美介绍自己。写下现在的心情，AI 会为你找到一位真正同频的陌生人。</p>

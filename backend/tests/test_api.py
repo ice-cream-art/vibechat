@@ -1,4 +1,5 @@
 import asyncio
+import json
 
 from fastapi.testclient import TestClient
 
@@ -102,6 +103,42 @@ def test_auth_rejects_wrong_password() -> None:
         json={"account": settings.auth_email, "password": "wrong-password"},
     )
     assert response.status_code == 401
+
+
+def test_auth_supports_multiple_configured_users() -> None:
+    original_users = settings.auth_users
+    settings.auth_users = json.dumps(
+        [
+            {
+                "email": "first@example.com",
+                "password": "first-password",
+                "display_name": "第一位用户",
+            },
+            {
+                "email": "second@example.com",
+                "password": "second-password",
+                "display_name": "第二位用户",
+            },
+        ],
+        ensure_ascii=False,
+    )
+    try:
+        auth_client = TestClient(app)
+        login = auth_client.post(
+            "/api/auth/login",
+            json={"account": "SECOND@example.com", "password": "second-password"},
+        )
+        assert login.status_code == 200
+        assert login.json()["user"] == {
+            "email": "second@example.com",
+            "display_name": "第二位用户",
+        }
+
+        me = auth_client.get("/api/auth/me")
+        assert me.status_code == 200
+        assert me.json()["user"]["email"] == "second@example.com"
+    finally:
+        settings.auth_users = original_users
 
 
 def test_rest_message_fallback() -> None:

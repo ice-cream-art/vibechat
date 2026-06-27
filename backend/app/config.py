@@ -29,6 +29,7 @@ class Settings(BaseSettings):
     auth_email: str = "3117681462@qq.com"
     auth_password: str = "vibechat2026"
     auth_display_name: str = "VibeChat 用户"
+    auth_users: str = ""
     auth_secret_key: str = "vibechat-local-dev-secret"
     auth_session_ttl_seconds: int = Field(default=60 * 60 * 24 * 7, ge=300)
 

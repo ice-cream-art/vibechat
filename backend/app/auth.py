@@ -23,21 +23,39 @@ class SessionPayload:
     expires_at: int
 
 
+@dataclass(frozen=True)
+class ConfiguredAuthUser:
+    email: str
+    password: str
+    display_name: str
+
+
 def configured_user(settings: Settings) -> AuthUser:
-    return AuthUser(
-        email=settings.auth_email.strip().lower(),
-        display_name=settings.auth_display_name.strip() or "VibeChat 用户",
-    )
+    user = configured_auth_users(settings)[0]
+    return AuthUser(email=user.email, display_name=user.display_name)
+
+
+def configured_auth_users(settings: Settings) -> list[ConfiguredAuthUser]:
+    configured = _auth_users_from_json(settings.auth_users)
+    if configured:
+        return configured
+    return [
+        ConfiguredAuthUser(
+            email=settings.auth_email.strip().lower(),
+            password=settings.auth_password,
+            display_name=settings.auth_display_name.strip() or "VibeChat 用户",
+        )
+    ]
 
 
 def authenticate(settings: Settings, account: str, password: str) -> AuthUser | None:
-    expected_account = settings.auth_email.strip().lower()
-    expected_password = settings.auth_password
-    if (
-        secrets.compare_digest(account.strip().lower(), expected_account)
-        and secrets.compare_digest(password, expected_password)
-    ):
-        return configured_user(settings)
+    normalized_account = account.strip().lower()
+    for user in configured_auth_users(settings):
+        if (
+            secrets.compare_digest(normalized_account, user.email)
+            and secrets.compare_digest(password, user.password)
+        ):
+            return AuthUser(email=user.email, display_name=user.display_name)
     return None
 
 
@@ -108,6 +126,30 @@ def _parse_payload(payload: Any) -> SessionPayload:
     if not isinstance(email, str) or not isinstance(display_name, str) or not isinstance(expires_at, int):
         raise _invalid_session()
     return SessionPayload(email=email, display_name=display_name, expires_at=expires_at)
+
+
+def _auth_users_from_json(raw_users: str) -> list[ConfiguredAuthUser]:
+    raw_users = raw_users.strip()
+    if not raw_users:
+        return []
+    try:
+        payload = json.loads(raw_users)
+    except json.JSONDecodeError as exc:
+        raise ValueError("AUTH_USERS must be valid JSON") from exc
+    if not isinstance(payload, list):
+        raise ValueError("AUTH_USERS must be a JSON array")
+
+    users: list[ConfiguredAuthUser] = []
+    for index, item in enumerate(payload):
+        if not isinstance(item, dict):
+            raise ValueError(f"AUTH_USERS[{index}] must be an object")
+        email = str(item.get("email", "")).strip().lower()
+        password = str(item.get("password", ""))
+        display_name = str(item.get("display_name", "")).strip() or email
+        if not email or not password:
+            raise ValueError(f"AUTH_USERS[{index}] needs email and password")
+        users.append(ConfiguredAuthUser(email=email, password=password, display_name=display_name))
+    return users
 
 
 def _sign(settings: Settings, payload_part: str) -> str:

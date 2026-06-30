@@ -6,7 +6,7 @@ services:
       LLM_PROVIDER: ${LLM_PROVIDER:-demo}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://api.deepseek.com}
-      OPENAI_MODEL: ${OPENAI_MODEL:-deepseek-v4-pro}
+      OPENAI_MODEL: ${OPENAI_MODEL:-deepseek-v4-flash}
       CORS_ORIGINS: ${CORS_ORIGINS:-}
       CORS_ORIGIN_REGEX: ${CORS_ORIGIN_REGEX:-^https?://.*$}
       AUTH_EMAIL: ${AUTH_EMAIL:-3117681462@qq.com}

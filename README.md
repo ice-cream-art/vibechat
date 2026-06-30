@@ -107,8 +107,8 @@ docker compose up --build
 ```dotenv
 LLM_PROVIDER=openai
 OPENAI_API_KEY=your-key
-OPENAI_BASE_URL=https://api.openai.com/v1
-OPENAI_MODEL=gpt-4.1-mini
+OPENAI_BASE_URL=https://api.deepseek.com
+OPENAI_MODEL=deepseek-v4-flash
 ```
 
 也可将 `OPENAI_BASE_URL` 替换为兼容 OpenAI Chat Completions 的服务根地址。
@@ -120,8 +120,8 @@ OPENAI_MODEL=gpt-4.1-mini
 ```dotenv
 LLM_PROVIDER=anthropic
 ANTHROPIC_API_KEY=your-key
-ANTHROPIC_BASE_URL=https://api.anthropic.com/v1
-ANTHROPIC_MODEL=claude-sonnet-4-20250514
+ANTHROPIC_BASE_URL=https://api.deepseek.com/anthropic
+ANTHROPIC_MODEL=deepseek-v4-flash
 ```
 
 修改配置后重启后端。`GET /health` 会返回当前 Provider 名称，但不会泄露模型密钥。
@@ -133,11 +133,11 @@ DeepSeek 同时提供 OpenAI 与 Anthropic 格式。本项目已使用同一 Dee
 ```dotenv
 OPENAI_API_KEY=your-deepseek-key
 OPENAI_BASE_URL=https://api.deepseek.com
-OPENAI_MODEL=deepseek-v4-pro
+OPENAI_MODEL=deepseek-v4-flash
 
 ANTHROPIC_API_KEY=your-deepseek-key
 ANTHROPIC_BASE_URL=https://api.deepseek.com/anthropic
-ANTHROPIC_MODEL=deepseek-v4-pro
+ANTHROPIC_MODEL=deepseek-v4-flash
 ```
 
 这两条调用链分别经过独立的请求格式、认证请求头和响应解析逻辑，最终统一为 `EmotionResult`。

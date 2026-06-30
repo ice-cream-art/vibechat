@@ -2,7 +2,13 @@ services:
   backend:
     build: ./backend
     environment:
-      LLM_PROVIDER: demo
+      LLM_PROVIDER: ${LLM_PROVIDER:-demo}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://api.deepseek.com}
+      OPENAI_MODEL: ${OPENAI_MODEL:-deepseek-v4-flash}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      ANTHROPIC_BASE_URL: ${ANTHROPIC_BASE_URL:-https://api.deepseek.com/anthropic}
+      ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-deepseek-v4-flash}
       CORS_ORIGINS: http://localhost:3000
     ports:
       - "8000:8000"
@@ -17,4 +23,3 @@ services:
       - backend
     ports:
       - "3000:3000"
-

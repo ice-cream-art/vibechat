@@ -13,12 +13,12 @@ class Settings(BaseSettings):
     llm_provider: str = "demo"
 
     openai_api_key: str = ""
-    openai_base_url: str = "https://api.openai.com/v1"
-    openai_model: str = "gpt-4.1-mini"
+    openai_base_url: str = "https://api.deepseek.com"
+    openai_model: str = "deepseek-v4-flash"
 
     anthropic_api_key: str = ""
-    anthropic_base_url: str = "https://api.anthropic.com/v1"
-    anthropic_model: str = "claude-sonnet-4-20250514"
+    anthropic_base_url: str = "https://api.deepseek.com/anthropic"
+    anthropic_model: str = "deepseek-v4-flash"
 
     cors_origins: str = "http://localhost:3000,http://127.0.0.1:3000"
     cors_origin_regex: str = (

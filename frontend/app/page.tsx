@@ -72,6 +72,12 @@ const CHAT_API_URL = (
   process.env.NEXT_PUBLIC_CHAT_API_URL || API_URL
 ).replace(/\/$/, "");
 
+const AUTH_REQUIRED = process.env.NEXT_PUBLIC_AUTH_REQUIRED !== "false";
+const PUBLIC_USER: AuthUser = {
+  email: "public@vibechat.local",
+  display_name: "公开体验",
+};
+
 const TTS_API_URL = process.env.NEXT_PUBLIC_TTS_API_URL?.replace(/\/$/, "");
 const TTS_REF_AUDIO_PATH = process.env.NEXT_PUBLIC_TTS_REF_AUDIO_PATH || "";
 const TTS_PROMPT_TEXT = process.env.NEXT_PUBLIC_TTS_PROMPT_TEXT || "";
@@ -460,8 +466,8 @@ export default function Home() {
   const [emotion, setEmotion] = useState<EmotionResult | null>(null);
   const [ticket, setTicket] = useState<MatchTicket | null>(null);
   const [match, setMatch] = useState<MatchStatus | null>(null);
-  const [authUser, setAuthUser] = useState<AuthUser | null>(null);
-  const [authChecking, setAuthChecking] = useState(true);
+  const [authUser, setAuthUser] = useState<AuthUser | null>(AUTH_REQUIRED ? null : PUBLIC_USER);
+  const [authChecking, setAuthChecking] = useState(AUTH_REQUIRED);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [atmosphereMode, setAtmosphereMode] = useState<AtmosphereMode>("auto");
@@ -505,6 +511,11 @@ export default function Home() {
   };
 
   useEffect(() => {
+    if (!AUTH_REQUIRED) {
+      setAuthUser(PUBLIC_USER);
+      setAuthChecking(false);
+      return;
+    }
     let disposed = false;
     void fetch(`${API_URL}/api/auth/me`, {
       cache: "no-store",
@@ -666,7 +677,7 @@ export default function Home() {
     window.location.replace("/login");
   };
 
-  if (authChecking || !authUser) {
+  if (AUTH_REQUIRED && (authChecking || !authUser)) {
     return (
       <main className="shell authGate">
         <div className="miniSpinner" aria-hidden="true" />
@@ -720,8 +731,14 @@ export default function Home() {
           <span>{soundEnabled ? "声" : "静"}</span>
           <i />
         </button>
-        <span className="userPill" title={authUser.email}>{authUser.display_name}</span>
-        <button className="loginButton" type="button" onClick={logout}>退出</button>
+        {AUTH_REQUIRED && authUser ? (
+          <>
+            <span className="userPill" title={authUser.email}>{authUser.display_name}</span>
+            <button className="loginButton" type="button" onClick={logout}>退出</button>
+          </>
+        ) : (
+          <span className="userPill" title="无需登录">公开体验</span>
+        )}
       </header>
 
       <section className={`stage phase-${phase}`}>

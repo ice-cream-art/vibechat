@@ -18,6 +18,8 @@ const API_URL = (
   (process.env.NODE_ENV === "production" ? "/_/backend" : "http://localhost:8000")
 ).replace(/\/$/, "");
 
+const AUTH_REQUIRED = process.env.NEXT_PUBLIC_AUTH_REQUIRED !== "false";
+
 function apiErrorMessage(payload: unknown, fallback: string) {
   if (payload && typeof payload === "object" && "detail" in payload) {
     const detail = (payload as { detail?: unknown }).detail;
@@ -42,10 +44,13 @@ export default function LoginPage() {
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    setNextPath(safeNextPath(params.get("next")));
-  }, []);
+    const requestedNextPath = safeNextPath(params.get("next"));
+    setNextPath(requestedNextPath);
+    if (!AUTH_REQUIRED) router.replace(requestedNextPath);
+  }, [router]);
 
   useEffect(() => {
+    if (!AUTH_REQUIRED) return;
     let disposed = false;
     void fetch(`${API_URL}/api/auth/me`, {
       cache: "no-store",
